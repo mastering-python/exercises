@@ -2,6 +2,10 @@ import random
 
 
 def quicksort(nums, left=None, right=None):
+    if left is None:
+        left = 0
+    if right is None:
+        right = len(nums) - 1
     if right <= left:
         return
     j = left
@@ -11,11 +15,15 @@ def quicksort(nums, left=None, right=None):
             nums[i], nums[j] = nums[j], nums[i]
             j += 1
     nums[j], nums[right] = nums[right], nums[j]
-    quicksort(nums, left, j-1)
-    quicksort(nums, j+1, right)
+    quicksort(nums, left, j - 1)
+    quicksort(nums, j + 1, right)
     return nums
 
 
+def main():
+    nums = random.sample(range(100000), 100000)
+    assert sorted(nums) == quicksort(nums)
+
+
 if __name__ == '__main__':
-    nums = [random.randint(1, 100000) for _ in range(10000)]
-    assert sorted(nums) == quicksort(nums, 0, len(nums)-1)
+    main()

@@ -4,16 +4,21 @@ from collections.abc import Mapping
 from typing import cast
 
 
-def _validate_expected_bases(name: str, expected_bases: object) -> None:
+def _validate_expected_bases(
+    name: str,
+    expected_bases: object,
+) -> tuple[type, ...]:
     """Validate the required-base contract before class construction."""
     if not isinstance(expected_bases, tuple):
         raise TypeError(f"{name} expected_bases must be a tuple containing only types")
-    requirements: tuple[object, ...] = cast(
+    requirement_source: tuple[object, ...] = cast(
         tuple[object, ...],
         expected_bases,
     )
+    requirements: tuple[object, ...] = tuple(iter(requirement_source))
     if not all(isinstance(base, type) for base in requirements):
         raise TypeError(f"{name} expected_bases must be a tuple containing only types")
+    return cast(tuple[type, ...], requirements)
 
 
 class SomeBaseClass:
@@ -33,7 +38,10 @@ class ExpectedBasesMeta(type):
         **kwargs: object,
     ) -> "ExpectedBasesMeta":
         """Create a class and validate its full inheritance hierarchy."""
-        _validate_expected_bases(name, expected_bases)
+        requirements: tuple[type, ...] = _validate_expected_bases(
+            name,
+            expected_bases,
+        )
         class_namespace: dict[str, object] = cast(dict[str, object], namespace)
         created_class: ExpectedBasesMeta = super().__new__(
             cls,
@@ -43,7 +51,7 @@ class ExpectedBasesMeta(type):
             **kwargs,
         )
         missing_bases: tuple[type, ...] = tuple(
-            base for base in expected_bases if not issubclass(created_class, base)
+            base for base in requirements if not issubclass(created_class, base)
         )
         if missing_bases:
             missing_names: str = ", ".join(base.__name__ for base in missing_bases)

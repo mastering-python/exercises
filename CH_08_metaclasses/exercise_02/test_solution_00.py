@@ -1,6 +1,6 @@
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import ClassVar, cast
 
 import pytest
@@ -193,6 +193,48 @@ def test_missing_base_validation_runs_after_class_construction_hooks() -> None:
         _ = Broken
 
     assert str(error.value) == "Broken must inherit MissingBase"
+    assert events == ["set_name:descriptor", "init_subclass"]
+
+
+def test_tuple_subclass_requirements_are_snapshotted_once() -> None:
+    events: list[str] = []
+
+    class MissingBase:
+        pass
+
+    class StatefulRequirements(tuple[object, ...]):
+        iteration_count: int = 0
+
+        def __iter__(self) -> Iterator[object]:
+            self.iteration_count += 1
+            if self.iteration_count == 1:
+                return iter((MissingBase,))
+            return iter(("not-a-type",))
+
+    class RecordingDescriptor:
+        def __set_name__(self, owner: type[object], name: str) -> None:
+            events.append(f"set_name:{name}")
+
+    class HookBase:
+        def __init_subclass__(cls) -> None:
+            events.append("init_subclass")
+            super().__init_subclass__()
+
+    requirements: StatefulRequirements = StatefulRequirements((MissingBase,))
+
+    with pytest.raises(TypeError) as error:
+
+        class Broken(
+            HookBase,
+            metaclass=ExpectedBasesMeta,
+            expected_bases=cast(tuple[type, ...], requirements),
+        ):
+            descriptor: ClassVar[RecordingDescriptor] = RecordingDescriptor()
+
+        _ = Broken
+
+    assert str(error.value) == "Broken must inherit MissingBase"
+    assert requirements.iteration_count == 1
     assert events == ["set_name:descriptor", "init_subclass"]
 
 

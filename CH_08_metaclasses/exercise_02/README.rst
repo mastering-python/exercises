@@ -21,7 +21,9 @@ Before class construction, ``expected_bases`` must be a tuple containing only
 types. Invalid values raise
 ``TypeError("<ClassName> expected_bases must be a tuple containing only types")``
 before descriptor ``__set_name__`` or base ``__init_subclass__`` hooks can run.
-An empty requirement tuple allows an ordinary class.
+Accepted tuple subclasses are iterated once into a built-in tuple; item
+validation and completed-class checks reuse that snapshot. An empty requirement
+tuple allows an ordinary class.
 
 After that boundary check, the metaclass creates the class and uses
 ``issubclass`` against the completed class. Direct, indirect, multilevel, and

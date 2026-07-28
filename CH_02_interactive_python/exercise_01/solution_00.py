@@ -6,11 +6,25 @@ import ast
 import inspect
 import rlcompleter
 import sys
-from collections.abc import Hashable, Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Final, cast
 
 MAX_MATCHES: Final[int] = 25
 _UNRESOLVED: Final[object] = object()
+
+
+def _is_safe_literal(value: object) -> bool:
+    value_type: type[object] = type(value)
+    if value_type in (str, bytes, int, float, complex, bool, type(None)):
+        return True
+    if value_type is tuple:
+        items: tuple[object, ...] = cast(tuple[object, ...], value)
+        return all(_is_safe_literal(item) for item in items)
+    return False
+
+
+def _is_safe_container(value: object) -> bool:
+    return type(value) in (dict, list, tuple, str)
 
 
 class Completer(rlcompleter.Completer):
@@ -21,21 +35,27 @@ class Completer(rlcompleter.Completer):
             dict(namespace) if namespace is not None else None
         )
         super().__init__(parent_namespace)
-        self._namespace: Mapping[str, object] | None = namespace
+        self._namespace: Mapping[str, object] | None = parent_namespace
         self._item_completion_active: bool = False
         self._item_matches_cache: list[str] = []
+        self._name_matches_cache: list[str] = []
 
     def _active_namespace(self) -> Mapping[str, object]:
         if self._namespace is None:
             return cast(Mapping[str, object], vars(sys.modules["__main__"]))
         return self._namespace
 
+    def _resolve_name(self, name: str) -> object:
+        candidate: object
+        value: object
+        for candidate, value in self._active_namespace().items():
+            if type(candidate) is str and candidate == name:
+                return value
+        return _UNRESOLVED
+
     def _resolve_node(self, node: ast.expr) -> object:
         if isinstance(node, ast.Name):
-            namespace: Mapping[str, object] = self._active_namespace()
-            if node.id not in namespace:
-                return _UNRESOLVED
-            return namespace[node.id]
+            return self._resolve_name(node.id)
 
         if isinstance(node, ast.Attribute):
             owner: object = self._resolve_node(node.value)
@@ -45,7 +65,9 @@ class Completer(rlcompleter.Completer):
                 attribute: object = inspect.getattr_static(owner, node.attr)
             except AttributeError:
                 return _UNRESOLVED
-            return attribute
+            if _is_safe_container(attribute):
+                return attribute
+            return _UNRESOLVED
 
         if isinstance(node, ast.Subscript):
             container: object = self._resolve_node(node.value)
@@ -55,19 +77,18 @@ class Completer(rlcompleter.Completer):
                 key: object = ast.literal_eval(node.slice)
             except (SyntaxError, ValueError):
                 return _UNRESOLVED
-            if not isinstance(key, Hashable):
+            if not _is_safe_literal(key):
                 return _UNRESOLVED
             try:
-                if isinstance(container, Mapping):
+                if type(container) is dict:
                     mapping: Mapping[object, object] = cast(
                         Mapping[object, object], container
                     )
-                    return mapping[key]
-                if (
-                    isinstance(container, (list, tuple, str))
-                    and isinstance(key, int)
-                    and not isinstance(key, bool)
-                ):
+                    for candidate, value in mapping.items():
+                        if _is_safe_literal(candidate) and candidate == key:
+                            return value
+                    return _UNRESOLVED
+                if type(container) in (list, tuple, str) and type(key) is int:
                     sequence: Sequence[object] = cast(Sequence[object], container)
                     return sequence[key]
             except (IndexError, KeyError, TypeError):
@@ -100,10 +121,10 @@ class Completer(rlcompleter.Completer):
             return
 
         value: object = self._resolve_expression(expression)
-        if isinstance(value, Mapping):
+        if type(value) is dict:
             mapping: Mapping[object, object] = cast(Mapping[object, object], value)
             keys: Iterator[object] = iter(mapping)
-        elif isinstance(value, (list, tuple, str)):
+        elif type(value) in (list, tuple, str):
             sequence: Sequence[object] = cast(Sequence[object], value)
             keys = iter(range(min(len(sequence), MAX_MATCHES)))
         else:
@@ -115,8 +136,18 @@ class Completer(rlcompleter.Completer):
             if inspected >= MAX_MATCHES:
                 return
             inspected += 1
+            if not _is_safe_literal(key):
+                continue
             if self._matches_prefix(key, prefix.lstrip()):
                 yield f"{expression}[{key!r}]"
+
+    def _name_matches(self, text: str) -> Iterator[str]:
+        if not text.isidentifier():
+            return
+        name: object
+        for name in self._active_namespace():
+            if type(name) is str and name.startswith(text):
+                yield name
 
     def complete(self, text: str, state: int) -> str | None:
         """Return the requested cached item match or standard completion."""
@@ -129,7 +160,15 @@ class Completer(rlcompleter.Completer):
                     return self._item_matches_cache[state]
                 except IndexError:
                     return None
-        return super().complete(text, state)
+            return None
+        if "." in text:
+            return None
+        if state == 0:
+            self._name_matches_cache = list(self._name_matches(text))
+        try:
+            return self._name_matches_cache[state]
+        except IndexError:
+            return None
 
 
 def main() -> None:

@@ -3,8 +3,9 @@
 import importlib
 import readline
 import rlcompleter
-from collections.abc import Mapping
-from types import MappingProxyType, ModuleType, SimpleNamespace
+from collections.abc import Iterator, Mapping
+from types import ModuleType, SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -12,10 +13,60 @@ from . import solution_00
 from .solution_00 import MAX_MATCHES, Completer
 
 
+class RecordingMapping(Mapping[object, object]):
+    def __init__(self, calls: list[str]) -> None:
+        self._calls: list[str] = calls
+
+    def __getitem__(self, key: object) -> object:
+        self._calls.append("getitem")
+        raise KeyError(key)
+
+    def __iter__(self) -> Iterator[object]:
+        self._calls.append("iter")
+        return iter(())
+
+    def __len__(self) -> int:
+        self._calls.append("len")
+        return 0
+
+
+class RecordingKey:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls: list[str] = calls
+
+    def __hash__(self) -> int:
+        return 0
+
+    def __repr__(self) -> str:
+        self._calls.append("repr")
+        return "unsafe_key"
+
+
+class RecordingNamespaceKey:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls: list[str] = calls
+
+    def __hash__(self) -> int:
+        return hash("values")
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        self._calls.append("eq")
+        return False
+
+
+class RecordingList(list[object]):
+    def __init__(self, calls: list[str]) -> None:
+        super().__init__(["unsafe"])
+        self._calls: list[str] = calls
+
+    def __len__(self) -> int:
+        self._calls.append("len")
+        return super().__len__()
+
+
 def test_completes_mapping_keys_using_repr() -> None:
-    values: Mapping[object, object] = MappingProxyType(
-        {"alpha": 1, "beta": 2, 10: "ten"}
-    )
+    values: Mapping[object, object] = {"alpha": 1, "beta": 2, 10: "ten"}
     completer: Completer = Completer({"values": values})
 
     matches: list[str] = list(completer.item_matches("values["))
@@ -129,6 +180,107 @@ def test_does_not_invoke_call_expressions() -> None:
     assert calls == []
 
 
+def test_complete_does_not_invoke_properties() -> None:
+    calls: list[str] = []
+
+    class Dangerous:
+        @property
+        def secret(self) -> dict[str, int]:
+            calls.append("property")
+            return {"secret": 1}
+
+    completer: Completer = Completer({"dangerous": Dangerous()})
+
+    match: str | None = completer.complete("dangerous.secret.", 0)
+
+    assert calls == []
+    assert match is None
+
+
+def test_name_completion_does_not_inspect_callable_objects() -> None:
+    calls: list[str] = []
+
+    class DangerousCallable:
+        @property
+        def __signature__(self) -> object:
+            calls.append("signature")
+            return None
+
+        def __call__(self) -> None:
+            calls.append("call")
+
+    completer: Completer = Completer({"dangerous_callable": DangerousCallable()})
+
+    match: str | None = completer.complete("dangerous_c", 0)
+
+    assert calls == []
+    assert match == "dangerous_callable"
+
+
+def test_item_completion_does_not_iterate_custom_mappings() -> None:
+    calls: list[str] = []
+    completer: Completer = Completer({"values": RecordingMapping(calls)})
+
+    match: str | None = completer.complete("values[", 0)
+
+    assert match is None
+    assert calls == []
+
+
+def test_nested_item_completion_does_not_index_custom_mappings() -> None:
+    calls: list[str] = []
+    completer: Completer = Completer({"values": RecordingMapping(calls)})
+
+    match: str | None = completer.complete("values['nested'][", 0)
+
+    assert match is None
+    assert calls == []
+
+
+def test_item_completion_does_not_render_unsafe_keys() -> None:
+    calls: list[str] = []
+    key: RecordingKey = RecordingKey(calls)
+    completer: Completer = Completer({"values": {key: "secret"}})
+
+    match: str | None = completer.complete("values[", 0)
+
+    assert match is None
+    assert calls == []
+
+
+def test_item_completion_rejects_container_subclasses_without_invoking_them() -> None:
+    calls: list[str] = []
+    completer: Completer = Completer({"values": RecordingList(calls)})
+
+    match: str | None = completer.complete("values[", 0)
+
+    assert match is None
+    assert calls == []
+
+
+def test_namespace_snapshot_is_shared_by_all_completion_paths() -> None:
+    namespace: dict[str, object] = {"values": {"before": 1}}
+    completer: Completer = Completer(namespace)
+    namespace["values"] = {"after": 2}
+
+    matches: list[str] = list(completer.item_matches("values["))
+
+    assert matches == ["values['before']"]
+
+
+def test_item_completion_does_not_compare_unsafe_namespace_keys() -> None:
+    calls: list[str] = []
+    key: RecordingNamespaceKey = RecordingNamespaceKey(calls)
+    unsafe_namespace: dict[object, object] = {key: {"secret": 1}}
+    namespace: Mapping[str, object] = cast(Mapping[str, object], unsafe_namespace)
+    completer: Completer = Completer(namespace)
+
+    match: str | None = completer.complete("values[", 0)
+
+    assert calls == []
+    assert match is None
+
+
 def test_complete_caches_item_matches_across_states() -> None:
     completer: Completer = Completer({"values": {"alpha": 1, "beta": 2}})
 
@@ -161,7 +313,7 @@ def test_complete_delegates_normal_name_completion() -> None:
     assert match == "example_name"
 
 
-def test_complete_delegates_item_text_without_matches(
+def test_complete_does_not_delegate_item_text_without_matches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, int]] = []
@@ -179,9 +331,9 @@ def test_complete_delegates_item_text_without_matches(
     first: str | None = completer.complete("number[", 0)
     second: str | None = completer.complete("number[", 1)
 
-    assert first == "standard-0"
-    assert second == "standard-1"
-    assert calls == [("number[", 0), ("number[", 1)]
+    assert first is None
+    assert second is None
+    assert calls == []
 
 
 def test_import_does_not_register_readline_hooks(

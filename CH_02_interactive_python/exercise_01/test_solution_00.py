@@ -102,6 +102,24 @@ def test_rejects_non_finite_float_and_complex_keys() -> None:
     assert matches == ["values[1.5]", "values[(1+2j)]"]
 
 
+def test_skips_huge_integer_keys_that_cannot_be_rendered() -> None:
+    huge_key: int = 10**5000
+    completer: Completer = Completer({"values": {huge_key: "too large"}})
+
+    matches: list[str] = list(completer.item_matches("values["))
+
+    assert matches == []
+
+
+def test_skips_nested_huge_integer_keys_that_cannot_be_rendered() -> None:
+    huge_key: tuple[object, ...] = (10**5000,)
+    completer: Completer = Completer({"values": {huge_key: "too large"}})
+
+    matches: list[str] = list(completer.item_matches("values["))
+
+    assert matches == []
+
+
 def test_completes_list_tuple_and_string_indices() -> None:
     namespace: dict[str, object] = {
         "items": ["first", "second"],

@@ -36,6 +36,15 @@ def _is_safe_literal(value: object) -> bool:
     return False
 
 
+def _render_safe_literal(value: object) -> str | None:
+    if not _is_safe_literal(value):
+        return None
+    try:
+        return repr(value)
+    except ValueError:
+        return None
+
+
 def _is_safe_container(value: object) -> bool:
     return type(value) in (dict, list, tuple, str)
 
@@ -126,12 +135,12 @@ class Completer(rlcompleter.Completer):
         return self._resolve_node(node)
 
     @staticmethod
-    def _matches_prefix(key: object, prefix: str) -> bool:
+    def _matches_prefix(key: object, rendered: str, prefix: str) -> bool:
         if not prefix:
             return True
         if prefix[0] in {"'", '"'}:
             return type(key) is str and key.startswith(prefix[1:])
-        return repr(key).startswith(prefix)
+        return rendered.startswith(prefix)
 
     def item_matches(self, text: str) -> Iterator[str]:
         """Yield safe item completions for the final opening bracket in *text*."""
@@ -158,10 +167,11 @@ class Completer(rlcompleter.Completer):
             if inspected >= MAX_MATCHES:
                 return
             inspected += 1
-            if not _is_safe_literal(key):
+            rendered: str | None = _render_safe_literal(key)
+            if rendered is None:
                 continue
-            if self._matches_prefix(key, prefix.lstrip()):
-                yield f"{expression}[{key!r}]"
+            if self._matches_prefix(key, rendered, prefix.lstrip()):
+                yield f"{expression}[{rendered}]"
 
     def _name_matches(self, text: str) -> Iterator[str]:
         if not text.isidentifier():

@@ -16,15 +16,14 @@ _UNRESOLVED: Final[object] = object()
 class Completer(rlcompleter.Completer):
     """Extend standard completion with safe item completion."""
 
-    matches: list[str]
-
     def __init__(self, namespace: Mapping[str, object] | None = None) -> None:
         parent_namespace: dict[str, object] | None = (
             dict(namespace) if namespace is not None else None
         )
         super().__init__(parent_namespace)
         self._namespace: Mapping[str, object] | None = namespace
-        self.matches = []
+        self._item_completion_active: bool = False
+        self._item_matches_cache: list[str] = []
 
     def _active_namespace(self) -> Mapping[str, object]:
         if self._namespace is None:
@@ -121,15 +120,16 @@ class Completer(rlcompleter.Completer):
 
     def complete(self, text: str, state: int) -> str | None:
         """Return the requested cached item match or standard completion."""
-        if "[" not in text:
-            return super().complete(text, state)
-
-        if state == 0:
-            self.matches = list(self.item_matches(text))
-        try:
-            return self.matches[state]
-        except IndexError:
-            return None
+        if "[" in text:
+            if state == 0:
+                self._item_matches_cache = list(self.item_matches(text))
+                self._item_completion_active = bool(self._item_matches_cache)
+            if self._item_completion_active:
+                try:
+                    return self._item_matches_cache[state]
+                except IndexError:
+                    return None
+        return super().complete(text, state)
 
 
 def main() -> None:

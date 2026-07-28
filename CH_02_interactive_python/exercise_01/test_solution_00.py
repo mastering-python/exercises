@@ -1,8 +1,14 @@
 """Tests for the safe item completer."""
 
+import importlib
+import readline
+import rlcompleter
 from collections.abc import Mapping
-from types import MappingProxyType, SimpleNamespace
+from types import MappingProxyType, ModuleType, SimpleNamespace
 
+import pytest
+
+from . import solution_00
 from .solution_00 import MAX_MATCHES, Completer
 
 
@@ -153,3 +159,46 @@ def test_complete_delegates_normal_name_completion() -> None:
     match: str | None = completer.complete("example_n", 0)
 
     assert match == "example_name"
+
+
+def test_complete_delegates_item_text_without_matches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+
+    def standard_complete(
+        completer: rlcompleter.Completer, text: str, state: int
+    ) -> str | None:
+        del completer
+        calls.append((text, state))
+        return f"standard-{state}"
+
+    monkeypatch.setattr(rlcompleter.Completer, "complete", standard_complete)
+    completer: Completer = Completer({"number": 42})
+
+    first: str | None = completer.complete("number[", 0)
+    second: str | None = completer.complete("number[", 1)
+
+    assert first == "standard-0"
+    assert second == "standard-1"
+    assert calls == [("number[", 0), ("number[", 1)]
+
+
+def test_import_does_not_register_readline_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, object]] = []
+
+    def record_completer(completer: object) -> None:
+        calls.append(("set_completer", completer))
+
+    def record_parse_and_bind(command: str) -> None:
+        calls.append(("parse_and_bind", command))
+
+    monkeypatch.setattr(readline, "set_completer", record_completer)
+    monkeypatch.setattr(readline, "parse_and_bind", record_parse_and_bind)
+
+    reloaded: ModuleType = importlib.reload(solution_00)
+
+    assert reloaded is solution_00
+    assert calls == []

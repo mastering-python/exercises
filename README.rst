@@ -78,5 +78,5 @@ Contributing
 Alternative solutions are welcome and use the next available
 ``solution_NN.py``. Keep canonical files, tests, and exercise documentation
 unchanged unless correcting the reference answer. All submitted Python code
-must be formatted, linted, typed, and tested. The commands above run these
-checks.
+must be formatted, linted, typed, and tested. The repository-wide commands
+above validate the maintained canonical scope.

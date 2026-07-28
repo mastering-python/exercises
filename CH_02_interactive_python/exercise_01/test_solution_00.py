@@ -233,6 +233,65 @@ def test_complete_does_not_inspect_class_roots_with_hostile_metaclasses() -> Non
     assert match is None
 
 
+def test_complete_does_not_inspect_instances_with_hostile_metaclasses() -> None:
+    calls: list[str] = []
+
+    class HostileMeta(type):
+        def __getattribute__(cls, name: str) -> object:
+            calls.append(name)
+            return super().__getattribute__(name)
+
+    class Evil(metaclass=HostileMeta):
+        values: dict[str, int]
+
+        def __init__(self) -> None:
+            self.values = {"secret": 1}
+
+    evil: Evil = Evil()
+    calls.clear()
+    completer: Completer = Completer({"obj": evil})
+
+    match: str | None = completer.complete("obj.values[", 0)
+
+    assert calls == []
+    assert match is None
+
+
+def test_complete_does_not_inspect_hostile_instances_from_safe_containers() -> None:
+    calls: list[str] = []
+
+    class HostileMeta(type):
+        def __getattribute__(cls, name: str) -> object:
+            calls.append(name)
+            return super().__getattribute__(name)
+
+    class Evil(metaclass=HostileMeta):
+        values: dict[str, int]
+
+        def __init__(self) -> None:
+            self.values = {"secret": 1}
+
+    evil: Evil = Evil()
+    calls.clear()
+    namespace: dict[str, object] = {
+        "objects": {"evil": evil},
+        "items": [evil],
+        "pair": (evil,),
+    }
+    completer: Completer = Completer(namespace)
+
+    expression: str
+    for expression in (
+        "objects['evil'].values[",
+        "items[0].values[",
+        "pair[0].values[",
+    ):
+        match: str | None = completer.complete(expression, 0)
+
+        assert calls == []
+        assert match is None
+
+
 def test_name_completion_does_not_inspect_callable_objects() -> None:
     calls: list[str] = []
 
@@ -363,6 +422,15 @@ def test_complete_preserves_keyword_completion() -> None:
     match: str | None = completer.complete("for", 0)
 
     assert match == "for "
+
+
+@pytest.mark.parametrize("name", ["_", "case", "match"])
+def test_complete_treats_soft_keywords_as_namespace_names(name: str) -> None:
+    completer: Completer = Completer({name: 1})
+
+    match: str | None = completer.complete(name, 0)
+
+    assert match == name
 
 
 def test_complete_does_not_delegate_item_text_without_matches(

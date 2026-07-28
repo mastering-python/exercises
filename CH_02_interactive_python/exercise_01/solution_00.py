@@ -14,7 +14,7 @@ from typing import Final, cast
 
 MAX_MATCHES: Final[int] = 25
 _UNRESOLVED: Final[object] = object()
-_KEYWORDS: Final[tuple[str, ...]] = (*keyword.kwlist, *keyword.softkwlist)
+_KEYWORDS: Final[tuple[str, ...]] = tuple(keyword.kwlist)
 _BUILTINS: Final[tuple[tuple[str, object], ...]] = tuple(
     (name, value) for name, value in vars(builtins).items() if type(name) is str
 )
@@ -74,7 +74,8 @@ class Completer(rlcompleter.Completer):
             owner: object = self._resolve_node(node.value)
             if owner is _UNRESOLVED:
                 return _UNRESOLVED
-            if isinstance(owner, type):
+            owner_type: type[object] = type(owner)
+            if isinstance(owner, type) or type(owner_type) is not type:
                 return _UNRESOLVED
             try:
                 attribute: object = inspect.getattr_static(owner, node.attr)

@@ -241,6 +241,27 @@ def test_explicit_label_wins_for_callable_with_non_string_name() -> None:
     assert signature(tracked_increment) == signature(increment)
 
 
+def test_explicit_label_preserves_builtin_name_and_stats() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    length: Callable[[str], int] = len
+    tracked_length: TrackedCallable[[str], int] = track(
+        length,
+        label="length",
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_length("hello")
+
+    assert result == 5
+    assert tracked_length.stats == TimingStats(1, 2.0, 2.0, 2.0)
+    assert reports == [Timing(label="length", elapsed=2.0, failed=False)]
+    assert getattr(tracked_length, "__name__", None) == "len"
+    assert getattr(tracked_length, "__wrapped__", None) is length
+    assert signature(tracked_length) == signature(length)
+
+
 def test_changing_name_getter_inherits_snapshot_and_stats() -> None:
     readings: Iterator[float] = iter((7.0, 9.0))
     reports: list[Timing] = []
@@ -274,6 +295,34 @@ def test_changing_name_getter_inherits_snapshot_and_stats() -> None:
     assert increment.name_reads == 1
     assert getattr(tracked_increment, "__wrapped__", None) is increment
     assert signature(tracked_increment) == signature(increment)
+
+
+def test_hostile_metaclass_type_name_inherits_safe_fallback_and_stats() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class HostileType(type):
+        def __getattribute__(self, attribute: str) -> object:
+            if attribute == "__name__":
+                raise RuntimeError("type name unavailable")
+            return super().__getattribute__(attribute)
+
+    class Increment(metaclass=HostileType):
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+    tracked_increment: TrackedCallable[[int], int] = track(
+        increment,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert tracked_increment.stats == TimingStats(1, 2.0, 2.0, 2.0)
+    assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
 
 
 def test_malformed_metadata_callable_inherits_safe_wrapping() -> None:

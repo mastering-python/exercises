@@ -3,9 +3,7 @@
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import WRAPPER_ASSIGNMENTS, WRAPPER_UPDATES, wraps
-from inspect import getattr_static
 from time import perf_counter
-from types import FunctionType
 from typing import ParamSpec, TypeVar, cast, overload
 
 P = ParamSpec("P")
@@ -44,13 +42,23 @@ def snapshot_wrapper_metadata(
             return isinstance(value, tuple)
         return False
 
-    def read_attribute(attribute: str, *, dynamically: bool = True) -> object:
+    def read_attribute(attribute: str) -> object:
         try:
-            if dynamically:
-                return getattr(function, attribute, None)
-            return getattr_static(function, attribute, None)
+            return getattr(function, attribute, None)
         except Exception:
             return None
+
+    def callable_type_name() -> str:
+        try:
+            type_name: object = type.__getattribute__(
+                type(function),
+                "__name__",
+            )
+        except Exception:
+            return "callable"
+        if isinstance(type_name, str):
+            return type_name
+        return "callable"
 
     assignment_attributes_list: list[str] = [
         str(attribute) for attribute in WRAPPER_ASSIGNMENTS
@@ -63,21 +71,14 @@ def snapshot_wrapper_metadata(
         "__wrapped__",
     }
 
-    function_name: object
-    if label is not None and isinstance(function, FunctionType):
-        function_name = function.__name__
-    else:
-        function_name = read_attribute(
-            "__name__",
-            dynamically=label is None,
-        )
+    function_name: object = read_attribute("__name__")
     timing_label: str
     if label is not None:
         timing_label = label
     elif isinstance(function_name, str):
         timing_label = function_name
     else:
-        timing_label = type(function).__name__
+        timing_label = callable_type_name()
 
     assigned: dict[str, object] = {}
     for attribute in assignment_attributes:

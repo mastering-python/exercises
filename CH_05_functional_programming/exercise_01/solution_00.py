@@ -1,14 +1,16 @@
 """Implement the quicksort algorithm."""
 
 from collections.abc import Iterable
-from typing import Protocol, TypeVar, cast
+from typing import Any, Protocol, TypeVar
 
-T = TypeVar("T")
 T_contra = TypeVar("T_contra", contravariant=True)
 
 
-class _SupportsLessThan(Protocol[T_contra]):
+class SupportsLessThan(Protocol[T_contra]):
     def __lt__(self, other: T_contra, /) -> bool: ...
+
+
+T = TypeVar("T", bound=SupportsLessThan[Any])
 
 
 def _quicksort(values: list[T]) -> list[T]:
@@ -20,8 +22,7 @@ def _quicksort(values: list[T]) -> list[T]:
     lower: list[T] = []
     upper: list[T] = []
     for value in iterator:
-        comparable: _SupportsLessThan[T] = cast(_SupportsLessThan[T], value)
-        if comparable < pivot:
+        if value < pivot:
             lower.append(value)
         else:
             upper.append(value)

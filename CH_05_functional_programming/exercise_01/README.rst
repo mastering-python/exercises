@@ -9,9 +9,9 @@ Implement the quicksort algorithm.
 Solution
 --------
 
-``quicksort`` accepts any iterable and returns a fresh sorted list. It
-materializes the iterable once and never mutates the iterable, an input list,
-or the objects contained in it. Empty and singleton inputs also produce fresh
+``quicksort`` accepts any iterable and returns a fresh sorted list. It consumes
+the iterable exactly once while materializing it. Mutable input containers are
+not structurally modified, and empty and singleton inputs also produce fresh
 lists. The ``qs`` name remains available as a typed compatibility wrapper.
 
 The implementation deterministically chooses the first item as the pivot.
@@ -23,7 +23,8 @@ are equivalent under the ordering.
 Values must provide a strict weak ordering through ``<``: comparisons should
 be irreflexive and transitive, and equivalence induced by neither value being
 less than the other should also be transitive. Comparison exceptions propagate
-to the caller.
+to the caller. The algorithm does not directly mutate contained objects, but a
+user-defined ``__lt__`` method can have its own side effects.
 
 Average time complexity is :math:`O(n \log n)` with :math:`O(n)` partition
 storage across one recursion level. Choosing the first pivot intentionally

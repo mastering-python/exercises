@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import ast
+import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
+from textwrap import dedent
 from typing import ClassVar
 
 import pytest
@@ -47,6 +50,38 @@ class BrokenComparison:
     def __lt__(self, other: BrokenComparison) -> bool:
         del other
         raise RuntimeError("comparison failed")
+
+
+def run_type_checker(
+    checker: str, probe_path: Path
+) -> subprocess.CompletedProcess[str]:
+    repository_root: Path = Path(__file__).parents[2]
+    if checker == "mypy":
+        arguments: list[str] = [
+            sys.executable,
+            "-m",
+            "mypy",
+            "--strict",
+            "--python-version",
+            "3.10",
+            str(probe_path),
+        ]
+    else:
+        arguments = [
+            sys.executable,
+            "-m",
+            "pyright",
+            "--pythonversion",
+            "3.10",
+            str(probe_path),
+        ]
+    return subprocess.run(
+        arguments,
+        cwd=repository_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_quicksort_accepts_generator() -> None:
@@ -132,6 +167,80 @@ def test_comparison_errors_propagate() -> None:
 
     with pytest.raises(RuntimeError, match="comparison failed"):
         quicksort(values)
+
+
+@pytest.mark.parametrize("checker", ["mypy", "pyright"])
+def test_static_typing_accepts_concrete_comparable_types(
+    checker: str,
+    tmp_path: Path,
+) -> None:
+    probe_path: Path = tmp_path / "valid_quicksort_typing.py"
+    probe_path.write_text(
+        dedent(
+            """
+            # pyright: strict
+            from __future__ import annotations
+
+            from CH_05_functional_programming.exercise_01.solution_00 import qs, quicksort
+
+
+            class Record:
+                def __init__(self, rank: int) -> None:
+                    self.rank: int = rank
+
+                def __lt__(self, other: Record) -> bool:
+                    return self.rank < other.rank
+
+
+            integers = quicksort([3, 1, 2])
+            strings = qs(["c", "a", "b"])
+            records = quicksort([Record(2), Record(1)])
+
+            reveal_type(integers)
+            reveal_type(strings)
+            reveal_type(records)
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    result: subprocess.CompletedProcess[str] = run_type_checker(checker, probe_path)
+
+    output: str = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    if checker == "mypy":
+        assert 'Revealed type is "list[int]"' in output
+        assert 'Revealed type is "list[str]"' in output
+        assert 'Revealed type is "list[valid_quicksort_typing.Record]"' in output
+    else:
+        assert 'Type of "integers" is "list[int]"' in output
+        assert 'Type of "strings" is "list[str]"' in output
+        assert 'Type of "records" is "list[Record]"' in output
+
+
+@pytest.mark.parametrize("checker", ["mypy", "pyright"])
+def test_static_typing_rejects_unorderable_objects(
+    checker: str,
+    tmp_path: Path,
+) -> None:
+    probe_path: Path = tmp_path / "invalid_quicksort_typing.py"
+    probe_path.write_text(
+        dedent(
+            """
+            # pyright: strict
+            from CH_05_functional_programming.exercise_01.solution_00 import quicksort
+
+            result: list[object] = quicksort([object(), object()])
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    result: subprocess.CompletedProcess[str] = run_type_checker(checker, probe_path)
+    output: str = result.stdout + result.stderr
+
+    assert result.returncode != 0, output
+    assert "object" in output
 
 
 def test_module_demo_is_protected_by_main_guard() -> None:

@@ -34,9 +34,12 @@ including parameters without constraints, using runtime instance checks. It
 then validates configured parameters. ``Literal`` matching requires both exact
 runtime type and equality, so equal values such as ``1`` and ``True`` remain
 distinct. Type hints resolve lazily on the first call, with defining locals and
-the runtime class available for forward references. Only a successful complete
-resolution is cached; unresolved names therefore raise when called rather than
-when decorated.
+function globals available for forward references. A still-unresolved nested
+class self-reference may use the declared owner only after the receiver's
+module, qualified name, and static method descriptor prove ownership of the
+original function. Arbitrary argument types never enter the annotation
+namespace. Only a successful complete resolution is cached; unresolved names
+therefore raise when called rather than when decorated.
 
 Unknown parameter names, constraints targeting ``*args`` or ``**kwargs``, and
 objects without a callable ``validate`` method are rejected when the function

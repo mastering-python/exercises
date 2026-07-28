@@ -419,6 +419,23 @@ def test_function_local_forward_reference_resolves_on_first_call() -> None:
     assert identify(value) is value
 
 
+def test_free_function_forward_reference_cannot_be_spoofed_by_argument() -> None:
+    class ExpectedValue:
+        pass
+
+    @type_check()
+    def identify(value: ExpectedValue) -> object:
+        return value
+
+    SpoofValue: type[object] = type("ExpectedValue", (), {})
+
+    with pytest.raises(
+        TypeError,
+        match=r"^value expected ExpectedValue, got ExpectedValue$",
+    ):
+        identify(SpoofValue())  # type: ignore[arg-type]
+
+
 def test_class_self_forward_reference_resolves_after_class_creation() -> None:
     class Node:
         @type_check()
@@ -429,6 +446,58 @@ def test_class_self_forward_reference_resolves_after_class_creation() -> None:
     second: Node = Node()
 
     assert first.connect(second) is second
+
+
+def test_class_self_forward_reference_cannot_be_spoofed_by_argument() -> None:
+    class Node:
+        @type_check()
+        def connect(self, other: Node) -> object:
+            return other
+
+    SpoofNode: type[object] = type("Node", (), {})
+
+    with pytest.raises(
+        TypeError,
+        match=r"^other expected Node, got Node$",
+    ):
+        Node().connect(SpoofNode())  # type: ignore[arg-type]
+
+
+def test_classmethod_self_reference_uses_verified_declared_owner() -> None:
+    class Node:
+        @classmethod
+        @type_check()
+        def connect(cls, other: Node) -> object:
+            return other
+
+    node: Node = Node()
+    SpoofNode: type[object] = type("Node", (), {})
+
+    with pytest.raises(
+        TypeError,
+        match=r"^other expected Node, got Node$",
+    ):
+        Node.connect(SpoofNode())  # type: ignore[arg-type]
+
+    assert Node.connect(node) is node
+
+
+def test_forged_receiver_cannot_claim_declared_owner_identity() -> None:
+    class Node:
+        @type_check()
+        def connect(self, other: Node) -> object:
+            return other
+
+    ForgedNode: type[object] = type(
+        "Node",
+        (),
+        {"__module__": Node.__module__},
+    )
+    ForgedNode.__qualname__ = Node.__qualname__
+    forged: object = ForgedNode()
+
+    with pytest.raises(NameError, match=r"name 'Node' is not defined"):
+        Node.connect(forged, forged)  # type: ignore[arg-type]
 
 
 def test_module_forward_reference_resolves_after_definition() -> None:

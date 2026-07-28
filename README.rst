@@ -65,6 +65,12 @@ the tools it needs:
 ``packaging``
    Distribution builds, wheels, and isolated environment testing.
 
+Install a single optional group when working only in that domain:
+
+.. code-block:: console
+
+   $ uv sync --group interactive
+
 After the package cache has been populated, reproduce the complete locked
 environment without network access:
 
@@ -78,5 +84,9 @@ Contributing
 Alternative solutions are welcome and use the next available
 ``solution_NN.py``. Keep canonical files, tests, and exercise documentation
 unchanged unless correcting the reference answer. All submitted Python code
-must be formatted, linted, typed, and tested. The repository-wide commands
-above validate the maintained canonical scope.
+must be formatted, linted, typed, and tested. Higher-numbered and specialized
+community alternatives are intentionally excluded from automated canonical
+gates to preserve historical files. New alternative pull requests must include
+focused tests and report equivalent per-file Ruff, Pyrefly, mypy, and Pyright
+results. The repository-wide commands above validate the maintained canonical
+scope.

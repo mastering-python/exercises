@@ -1,105 +1,152 @@
-# Apply your functional programming skills and calculate
-# something in a parallel way. Perhaps parallel sorting?
+"""Deterministic sequential and bounded spawn-process merge sort."""
+
+from __future__ import annotations
+
 import multiprocessing
-import random
+from collections.abc import Sequence
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing.context import BaseContext
+from typing import cast
 
-# Since sorting is CPU limited we should not go above the number of
-# CPU cores
-WORKERS = multiprocessing.cpu_count()
+__all__: list[str] = [
+    "merge",
+    "merge_sort",
+    "multiprocessing_merge_sort",
+    "parallel_merge_sort",
+    "split",
+]
 
 
-def merge_sort(data):
-    if len(data) <= 1:
-        return data
+def _validated_values(values: Sequence[int]) -> list[int]:
+    raw_values: object = cast(object, values)
+    if not isinstance(raw_values, Sequence):
+        raise TypeError("values must be an integer sequence")
+    candidate_values: Sequence[object] = cast(Sequence[object], raw_values)
+    copied: list[int] = []
+    value: object
+    for value in candidate_values:
+        if type(value) is not int:
+            raise TypeError("values must contain only integers")
+        copied.append(value)
+    return copied
 
-    middle = len(data) // 2
-    left = merge_sort(data[:middle])
-    right = merge_sort(data[middle:])
+
+def merge(left: Sequence[int], right: Sequence[int]) -> list[int]:
+    """Merge two sorted integer sequences without mutating either."""
+
+    left_values: list[int] = _validated_values(left)
+    right_values: list[int] = _validated_values(right)
+    merged: list[int] = []
+    left_index: int = 0
+    right_index: int = 0
+    while left_index < len(left_values) and right_index < len(right_values):
+        if left_values[left_index] <= right_values[right_index]:
+            merged.append(left_values[left_index])
+            left_index += 1
+        else:
+            merged.append(right_values[right_index])
+            right_index += 1
+    merged.extend(left_values[left_index:])
+    merged.extend(right_values[right_index:])
+    return merged
+
+
+def split(values: Sequence[int], size: int) -> list[list[int]]:
+    """Split an integer sequence into at most ``size`` balanced chunks."""
+
+    if type(size) is not int:
+        raise TypeError("size must be an integer")
+    if size < 1:
+        raise ValueError("size must be positive")
+    copied: list[int] = _validated_values(values)
+    if not copied:
+        return []
+    chunk_count: int = min(size, len(copied))
+    base_size, remainder = divmod(len(copied), chunk_count)
+    chunks: list[list[int]] = []
+    start: int = 0
+    index: int
+    for index in range(chunk_count):
+        chunk_size: int = base_size + (1 if index < remainder else 0)
+        stop: int = start + chunk_size
+        chunks.append(copied[start:stop])
+        start = stop
+    return chunks
+
+
+def _merge_sort_validated(values: list[int]) -> list[int]:
+    if len(values) < 2:
+        return values.copy()
+    middle: int = len(values) // 2
+    left: list[int] = _merge_sort_validated(values[:middle])
+    right: list[int] = _merge_sort_validated(values[middle:])
     return merge(left, right)
 
 
-def merge(left, right):
-    '''
-    Merge two sorted lists into one sorted list
+def merge_sort(values: Sequence[int]) -> list[int]:
+    """Return a non-mutating sequential merge sort."""
 
-    >>> merge([1, 3, 5], [2, 4, 6])
-    [1, 2, 3, 4, 5, 6]
-    >>> merge([1, 3, 5], [2, 4, 6, 7])
-    [1, 2, 3, 4, 5, 6, 7]
-    >>> merge([1, 2, 3], [1, 2, 3])
-    [1, 1, 2, 2, 3, 3]
-    '''
-    result = []
-    left_index = right_index = 0
-
-    # When using iterators, we can avoid the IndexError of
-    # accessing a non-existing element by using the `next`
-    # function. This will raise a `StopIteration` error if
-    # there are no more elements to iterate over.
-    left_next = left[left_index]
-    right_next = right[right_index]
-
-    while True:
-        try:
-            if left_next <= right_next:
-                result.append(left_next)
-                left_index += 1
-                left_next = left[left_index]
-            else:
-                result.append(right_next)
-                right_index += 1
-                right_next = right[right_index]
-        except IndexError:
-            # If we get an IndexError, it means that we have
-            # reached the end of one of the lists. We can
-            # simply extend the result with the remaining
-            # elements and break out of the loop.
-            result.extend(left[left_index:] or right[right_index:])
-            break
-
-    return result
+    return _merge_sort_validated(_validated_values(values))
 
 
-def split(data, size=WORKERS):
-    '''
-    Split a list into `size` different chunks so that each chunk
-    can be processed in parallel.
-    '''
-    chunk_size = len(data) // size
-    return [data[i:i + chunk_size] for i in
-            range(0, len(data), chunk_size)]
+def _merge_pair(pair: tuple[list[int], list[int]]) -> list[int]:
+    left, right = pair
+    return merge(left, right)
 
 
-def multiprocessing_merge_sort(data):
-    # Split the data into chunks
-    with multiprocessing.Pool(processes=WORKERS) as pool:
-        chunks = split(data, WORKERS)
-        sorted_chunks = pool.map(merge_sort, chunks)
+def parallel_merge_sort(
+    values: Sequence[int],
+    *,
+    max_workers: int | None = None,
+    context: BaseContext | None = None,
+) -> list[int]:
+    """Sort integers using bounded spawn-process map and pairwise merges."""
 
-        # Merge the chunks
-        i = 0
+    if max_workers is not None:
+        if type(max_workers) is not int:
+            raise TypeError("max_workers must be an integer")
+        if max_workers < 1:
+            raise ValueError("max_workers must be positive")
+    copied: list[int] = _validated_values(values)
+    if not copied:
+        return []
+
+    requested_workers: int = (
+        max_workers if max_workers is not None else multiprocessing.cpu_count()
+    )
+    worker_count: int = min(requested_workers, len(copied))
+    chunks: list[list[int]] = split(copied, worker_count)
+    process_context: BaseContext = (
+        context if context is not None else multiprocessing.get_context("spawn")
+    )
+    with ProcessPoolExecutor(
+        max_workers=worker_count,
+        mp_context=process_context,
+    ) as executor:
+        sorted_chunks: list[list[int]] = list(executor.map(merge_sort, chunks))
         while len(sorted_chunks) > 1:
-            # zip the chunks into pairs
-            pairs = zip(sorted_chunks[::2], sorted_chunks[1::2])
-            # merge the pairs in parallel
-            merged_chunks = pool.starmap(merge, pairs)
-
-            # If we have an odd number of chunks, we need to
-            # add the last chunk to the merged chunks
-            if len(sorted_chunks) % 2 == 1:
-                merged_chunks.append(sorted_chunks[-1])
-
-            sorted_chunks = merged_chunks
-
+            pairs: list[tuple[list[int], list[int]]] = list(
+                zip(sorted_chunks[::2], sorted_chunks[1::2], strict=False)
+            )
+            merged: list[list[int]] = list(executor.map(_merge_pair, pairs))
+            if len(sorted_chunks) % 2:
+                merged.append(sorted_chunks[-1])
+            sorted_chunks = merged
     return sorted_chunks[0]
 
 
-def main():
-    data = random.sample(range(1000), 100)
-    sorted_data = multiprocessing_merge_sort(data)
-    # Verify that the data is sorted correctly
-    assert sorted_data == sorted(data)
+def multiprocessing_merge_sort(values: Sequence[int]) -> list[int]:
+    """Compatibility wrapper using bounded spawn-process merge sort."""
+
+    return parallel_merge_sort(values)
 
 
-if __name__ == '__main__':
+def main() -> None:
+    """Run a deterministic bounded parallel-sort demonstration."""
+
+    values: list[int] = [9, 3, -1, 7, 3, 0]
+    print(parallel_merge_sort(values, max_workers=2))
+
+
+if __name__ == "__main__":
     main()

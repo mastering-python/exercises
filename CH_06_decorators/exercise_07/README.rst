@@ -14,7 +14,7 @@ The relevant chapter exercise-list excerpt is:
    4. Modify memoization function cache per function instead global one.
    5. Create version `functools.cached_property` can be recalculated as needed.
    6. Create single-dispatch decorator considers all configurable number arguments instead only first one.
-   7. Enhance `type_check` decorator include additional checks requiring number greater less given value.
+   7. Enhance the `type_check` decorator to include additional checks such as requiring a number to be greater than or less than a given value.
 
 Solution
 --------

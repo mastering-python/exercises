@@ -198,8 +198,7 @@ def type_check(
                 raise TypeError(f"unknown constrained parameter: {name!r}")
             if not callable(getattr(constraint, "validate", None)):
                 raise TypeError(
-                    f"constraint for {name!r} must provide "
-                    "validate(name, value)",
+                    f"constraint for {name!r} must provide validate(name, value)",
                 )
 
         annotations: dict[str, Any] = get_type_hints(function)

@@ -5,34 +5,71 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+from collections.abc import Callable, Sequence
 
+import pytest
 from colorama import Fore, Style  # type: ignore[import-untyped]
 
 from CH_02_interactive_python.exercise_01.solution_00 import Completer
+from CH_02_interactive_python.exercise_02 import solution_00
 from CH_02_interactive_python.exercise_02.solution_00 import (
     ColorCompleter,
     colorize,
 )
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+_CompletionFunction = Callable[[str, int], str | None]
+_DisplayHook = Callable[[str, Sequence[str], int], None]
+
+
+class FakeReadline:
+    def __init__(
+        self,
+        *,
+        delimiters: str,
+        library_version: str,
+        backend: str | None = None,
+    ) -> None:
+        self.backend: str | None = backend
+        self._READLINE_LIBRARY_VERSION: str = library_version
+        self._delimiters: str = delimiters
+        self.completer: _CompletionFunction | None = None
+        self.display_hook: _DisplayHook | None = None
+        self.bindings: list[str] = []
+
+    def get_completer_delims(self) -> str:
+        return self._delimiters
+
+    def set_completer_delims(self, delimiters: str) -> None:
+        self._delimiters = delimiters
+
+    def set_completer(self, completer: _CompletionFunction | None = None) -> None:
+        self.completer = completer
+
+    def set_completion_display_matches_hook(
+        self,
+        hook: _DisplayHook | None = None,
+    ) -> None:
+        self.display_hook = hook
+
+    def parse_and_bind(self, binding: str) -> None:
+        self.bindings.append(binding)
 
 
 def test_colorize_wraps_match_and_resets_style() -> None:
     assert colorize("candidate", Fore.RED) == (f"{Fore.RED}candidate{Style.RESET_ALL}")
 
 
-def test_default_color_preserves_first_candidate_text() -> None:
+def test_complete_returns_plain_first_sequence_candidate() -> None:
     completer: ColorCompleter = ColorCompleter({"values": ["alpha", "alpine"]})
 
     match: str | None = completer.complete("values[", 0)
 
-    assert match is not None
-    assert match.startswith(Fore.CYAN)
-    assert match.endswith(Style.RESET_ALL)
-    assert _ANSI_ESCAPE.sub("", match) == "values[0]"
+    assert match == "values[0]"
+    assert _ANSI_ESCAPE.search(match) is None
 
 
-def test_custom_color_wraps_multiple_candidates_and_preserves_sentinel() -> None:
+def test_complete_preserves_plain_candidates_and_sentinel() -> None:
     completer: ColorCompleter = ColorCompleter(
         {"values": {"alpha": 1, "alpine": 2}},
         color=Fore.MAGENTA,
@@ -43,10 +80,54 @@ def test_custom_color_wraps_multiple_candidates_and_preserves_sentinel() -> None
     ]
 
     assert matches == [
-        f"{Fore.MAGENTA}values['alpha']{Style.RESET_ALL}",
-        f"{Fore.MAGENTA}values['alpine']{Style.RESET_ALL}",
+        "values['alpha']",
+        "values['alpine']",
         None,
     ]
+
+
+def test_display_hook_colors_and_resets_each_candidate(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    completer: ColorCompleter = ColorCompleter(color=Fore.MAGENTA)
+
+    completer.display_matches(
+        "values[",
+        ["values[0]", "values[1]"],
+        len("values[0]"),
+    )
+
+    assert capsys.readouterr().out.splitlines() == [
+        "",
+        f"{Fore.MAGENTA}values[0]{Style.RESET_ALL}",
+        f"{Fore.MAGENTA}values[1]{Style.RESET_ALL}",
+    ]
+
+
+def test_configure_readline_preserves_expression_text_and_registers_hooks() -> None:
+    readline: FakeReadline = FakeReadline(
+        delimiters=" \t.[]'\"(),+-\\:",
+        library_version="8.2",
+    )
+    completer: ColorCompleter = ColorCompleter({"values": [1]})
+
+    solution_00.configure_readline(readline, completer)
+
+    assert readline.get_completer_delims() == " \t:"
+    assert readline.completer == completer.complete
+    assert readline.display_hook == completer.display_matches
+    assert readline.bindings == ["tab: complete"]
+
+
+def test_configure_readline_uses_libedit_binding() -> None:
+    readline: FakeReadline = FakeReadline(
+        delimiters=" \t[]'\"",
+        library_version="EditLine wrapper",
+    )
+
+    solution_00.configure_readline(readline, ColorCompleter())
+
+    assert readline.bindings == ["bind ^I rl_complete"]
 
 
 def test_color_completer_inherits_safe_expression_rejection() -> None:
@@ -78,6 +159,8 @@ def unexpected_call(*args: object, **kwargs: object) -> None:
 
 colorama.just_fix_windows_console = unexpected_call
 readline.set_completer = unexpected_call
+readline.set_completer_delims = unexpected_call
+readline.set_completion_display_matches_hook = unexpected_call
 readline.parse_and_bind = unexpected_call
 
 sys.modules.pop("CH_02_interactive_python.exercise_02.solution_00", None)

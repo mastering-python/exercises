@@ -11,18 +11,26 @@ Solution
 --------
 
 ``ColorCompleter`` reuses the safe parser and completion behavior from
-Exercise 1, then wraps every non-``None`` candidate in the configured Colorama
-foreground color. The default is ``Fore.CYAN``; callers can pass another
-Colorama color with the keyword-only ``color`` argument. Every candidate ends
-with ``Style.RESET_ALL`` so its color does not leak into later terminal output.
-The ``None`` sentinel remains unchanged.
+Exercise 1. Its ``complete`` method returns each inherited candidate unchanged,
+including the ``None`` sentinel, so readline inserts plain valid Python rather
+than ANSI escape bytes. A registered completion-display hook applies the
+configured Colorama foreground color only while listing choices. The default
+is ``Fore.CYAN``; callers can pass another Colorama color with the keyword-only
+``color`` argument. Every displayed candidate ends with ``Style.RESET_ALL`` so
+its color does not leak into later terminal output.
 
-Exercise 2 adds no terminal, Colorama, or readline configuration during import.
-Its terminal compatibility and direct readline setup happen only in the guarded
-demonstration. On Python 3.10, a fresh import still reaches the standard-library
-``rlcompleter`` dependency through Exercise 1; that module performs its own
-one-time readline registration. This inherited Exercise 1 integration behavior
-is outside the colored wrapper.
+The guarded demonstration removes expression punctuation from readline's
+completion delimiters so the callback receives complete attribute, bracket,
+quoted-string, signed-number, complex-number, and tuple expressions. It
+registers both the plain replacement callback and colored display hook, then
+uses ``tab: complete`` for GNU readline or ``bind ^I rl_complete`` for libedit.
+
+Exercise 2 adds no terminal, Colorama, or direct readline configuration during
+import. Its terminal compatibility and direct readline setup happen only in the
+guarded demonstration. On Python 3.10, a fresh import still reaches the
+standard-library ``rlcompleter`` dependency through Exercise 1; that module
+performs its own one-time readline registration. This inherited Exercise 1
+integration behavior is outside the colored wrapper.
 
 Dependencies
 ------------

@@ -4,9 +4,7 @@ Exercise 3: memoizing container arguments
 Question
 --------
 
-.. code-block:: text
-
-   3. Modify memoization function function unhashable types.
+3. Modify the memoization function to function with unhashable types.
 
 Solution
 --------

@@ -55,6 +55,21 @@ def test_bool_and_int_arguments_have_separate_entries() -> None:
     assert len(cache) == 2
 
 
+def test_dictionary_keys_are_frozen_with_runtime_type_tags() -> None:
+    calls: list[int] = []
+
+    @memoize
+    def identify_key(mapping: dict[object, str]) -> str:
+        calls.append(1)
+        key: object = next(iter(mapping))
+        return type(key).__name__
+
+    assert identify_key({True: "value"}) == "bool"
+    assert identify_key({1: "value"}) == "int"
+    assert calls == [1, 1]
+    assert len(cache) == 2
+
+
 def test_unordered_nested_dicts_and_sets_have_equivalent_keys() -> None:
     calls: list[int] = []
 

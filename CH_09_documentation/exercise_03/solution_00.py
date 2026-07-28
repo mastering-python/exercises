@@ -8,24 +8,37 @@ Tree: TypeAlias = dict[str, "Tree"]
 
 
 def count_nodes(tree: Tree) -> int:
-    """Count named nodes, rejecting cycles on the active recursion path."""
-    return _count_nodes(tree, set())
+    """Count named nodes with iterative cycle detection and memoization."""
+    active: set[int] = set()
+    completed: dict[int, int] = {}
+    stack: list[tuple[Tree, tuple[Tree, ...] | None]] = [(tree, None)]
 
+    while stack:
+        current, children = stack.pop()
+        identity: int = id(current)
 
-def _count_nodes(tree: Tree, active: set[int]) -> int:
-    identity: int = id(tree)
-    if identity in active:
-        raise ValueError("tree contains cycle")
+        if children is not None:
+            total: int = 0
+            child: Tree
+            for child in children:
+                total += 1 + completed[id(child)]
+            completed[identity] = total
+            active.remove(identity)
+            continue
 
-    active.add(identity)
-    total: int = 0
-    try:
-        subtree: Tree
-        for subtree in tree.values():
-            total += 1 + _count_nodes(subtree, active)
-    finally:
-        active.remove(identity)
-    return total
+        if identity in completed:
+            continue
+        if identity in active:
+            raise ValueError("tree contains cycle")
+
+        active.add(identity)
+        current_children: tuple[Tree, ...] = tuple(current.values())
+        stack.append((current, current_children))
+        pending_child: Tree
+        for pending_child in reversed(current_children):
+            stack.append((pending_child, None))
+
+    return completed[id(tree)]
 
 
 def main() -> None:

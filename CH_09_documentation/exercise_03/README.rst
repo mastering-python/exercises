@@ -18,16 +18,21 @@ Solution
 ``Tree`` names the recursive ``dict[str, "Tree"]`` shape. Each mapping key
 names one node and its value contains that node's children. The root mapping is
 the container for those named nodes, so it is not itself counted.
-``count_nodes`` therefore adds one for every mapping entry and recursively
-counts the entry's child tree. Dictionary insertion order and node names do not
+``count_nodes`` therefore adds one for every mapping entry and includes the
+entry's child-tree count. Dictionary insertion order and node names do not
 affect the result, and the input is never modified.
 
-Cycle detection tracks dictionary identities only along the active recursion
-path. Revisiting an active dictionary raises exactly
-``ValueError("tree contains cycle")``. A shared acyclic subtree is removed from
-the active path after each visit, so it remains valid and is counted once per
-occurrence. This teaching function relies on the type annotation and performs
-no additional runtime shape validation.
+The traversal uses an explicit post-order stack, so a valid tree may be deeper
+than Python's recursion limit. Cycle detection tracks dictionary identities
+only along the active path. Revisiting an active dictionary raises exactly
+``ValueError("tree contains cycle")``.
+
+After a subtree is completed, its count is memoized by dictionary identity.
+Each unique dictionary is traversed once, while every parent reference still
+adds one plus the cached child count. Shared acyclic directed graphs therefore
+remain valid and are counted once per occurrence, including compact graphs
+whose expanded counts are very large. This teaching function relies on the
+type annotation and performs no additional runtime shape validation.
 
 Dependencies
 ------------

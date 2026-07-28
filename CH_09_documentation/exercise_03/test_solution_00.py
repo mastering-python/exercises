@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from collections.abc import ValuesView
 from copy import deepcopy
 from pathlib import Path
 from types import NoneType
-from typing import get_type_hints
+from typing import ClassVar, cast, get_type_hints
 
 import pytest
 
@@ -16,6 +17,22 @@ from CH_09_documentation.exercise_03.solution_00 import (
     count_nodes,
     main,
 )
+
+
+class _ObservedTree:
+    value_reads: ClassVar[int] = 0
+    maximum_reads: ClassVar[int] = 100
+
+    children: dict[str, Tree]
+
+    def __init__(self, children: dict[str, Tree] | None = None) -> None:
+        self.children: dict[str, Tree] = children or {}
+
+    def values(self) -> ValuesView[Tree]:
+        type(self).value_reads += 1
+        if type(self).value_reads > type(self).maximum_reads:
+            raise AssertionError("shared subtree was recomputed")
+        return self.children.values()
 
 
 def test_count_nodes_counts_every_nested_named_node() -> None:
@@ -38,6 +55,19 @@ def test_count_nodes_returns_zero_for_empty_tree() -> None:
     tree: Tree = {}
 
     assert count_nodes(tree) == 0
+
+
+def test_count_nodes_handles_chain_deeper_than_recursion_limit() -> None:
+    tree: Tree = {}
+    cursor: Tree = tree
+    depth: int = sys.getrecursionlimit() + 100
+    index: int
+    for index in range(depth):
+        child: Tree = {}
+        cursor[f"node-{index}"] = child
+        cursor = child
+
+    assert count_nodes(tree) == depth
 
 
 def test_count_nodes_rejects_direct_cycle() -> None:
@@ -65,6 +95,20 @@ def test_shared_acyclic_subtree_is_counted_per_occurrence() -> None:
     }
 
     assert count_nodes(tree) == 4
+
+
+def test_compact_shared_dag_is_memoized_and_counts_every_reference() -> None:
+    _ObservedTree.value_reads = 0
+    tree: Tree = cast(Tree, _ObservedTree())
+    depth: int = 80
+    for _ in range(depth):
+        tree = cast(
+            Tree,
+            _ObservedTree({"left": tree, "right": tree}),
+        )
+
+    assert count_nodes(tree) == (2 ** (depth + 1)) - 2
+    assert _ObservedTree.value_reads == depth + 1
 
 
 def test_count_nodes_does_not_mutate_input() -> None:

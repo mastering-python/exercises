@@ -1,6 +1,9 @@
 Chapter 9 - documentation
-=======================================================================================================================
+=========================
 
-1. Type hint a complex `dict`
-2. Type hint nested types
-3. Type hint recursive types
+Exercises
+---------
+
+1. `Exercise 1: type hint complex dict <exercise_01/README.rst>`_
+2. `Exercise 2: type hint nested measurements <exercise_02/README.rst>`_
+3. `Exercise 3: type hint recursive trees <exercise_03/README.rst>`_

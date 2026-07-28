@@ -8,6 +8,29 @@ from CH_06_decorators.exercise_01.solution_00 import Timing
 from .solution_00 import TimingStats, TrackedCallable, track
 
 
+def test_bare_track_decorator_uses_defaults_and_attaches_stats(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    @track
+    def increment(value: int) -> int:
+        return value + 1
+
+    assert increment(4) == 5
+    assert increment.stats.count == 1
+    assert increment.stats.total >= 0.0
+    assert increment.stats.minimum == increment.stats.total
+    assert increment.stats.maximum == increment.stats.total
+    assert increment.stats.average == increment.stats.total
+
+    output: str = capsys.readouterr().out
+    prefix: str = "increment completed in "
+    assert output.startswith(prefix)
+    assert output.endswith("s\n")
+    rendered_duration: str = output.removeprefix(prefix).removesuffix("s\n")
+    assert len(rendered_duration.partition(".")[2]) == 6
+    assert rendered_duration == f"{increment.stats.total:.6f}"
+
+
 def test_stats_are_initially_empty_and_print_as_documented(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

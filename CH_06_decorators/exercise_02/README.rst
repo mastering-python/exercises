@@ -6,10 +6,11 @@ Exercise 2
 Solution
 --------
 
-``track`` supports both ``@track`` and configured use such as
-``@track(label="lookup")``.  Each decorated function has its own mutable
-``TimingStats`` instance at ``function.stats`` and a zero-argument
-``function.print_stats()`` method.  The aggregates use seconds:
+``track`` supports a bare decorator (``@track``), a configured decorator
+(``@track(label=..., clock=..., reporter=...)``), and a configured direct call
+(``track(function, label=..., clock=..., reporter=...)``).  Each decorated
+function has its own mutable ``TimingStats`` instance at ``function.stats`` and
+a zero-argument ``function.print_stats()`` method.  The aggregates use seconds:
 
 * ``count`` is the number of calls with a completed duration.
 * ``total`` is the sum of those durations.

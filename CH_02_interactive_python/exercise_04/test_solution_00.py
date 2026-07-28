@@ -188,6 +188,124 @@ def test_close_releases_internal_greeting_reference() -> None:
     assert retained_name_input.value == "World"
 
 
+def test_close_retries_failed_widget_after_attempting_remaining_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hello: HelloWidget = create_hello_widget("Ada")
+    external_values: list[object] = []
+
+    def observe_external(change: Mapping[str, object]) -> None:
+        external_values.append(change["new"])
+
+    hello.name_input.observe(observe_external, names="value")
+    unobserve_attribute: str = "unobserve"
+    original_unobserve: Callable[..., None] = cast(
+        Callable[..., None],
+        getattr(hello.name_input, unobserve_attribute),
+    )
+    unobserve_calls: int = 0
+
+    def record_unobserve(*args: object, **kwargs: object) -> None:
+        nonlocal unobserve_calls
+        unobserve_calls += 1
+        original_unobserve(*args, **kwargs)
+
+    monkeypatch.setattr(
+        hello.name_input,
+        unobserve_attribute,
+        record_unobserve,
+    )
+    close_attribute: str = "close"
+    original_name_close: Callable[[], None] = cast(
+        Callable[[], None],
+        getattr(hello.name_input, close_attribute),
+    )
+    name_close_calls: int = 0
+    close_error: RuntimeError = RuntimeError("name close failed")
+
+    def fail_name_close_once() -> None:
+        nonlocal name_close_calls
+        name_close_calls += 1
+        if name_close_calls == 1:
+            raise close_error
+        original_name_close()
+
+    monkeypatch.setattr(
+        hello.name_input,
+        close_attribute,
+        fail_name_close_once,
+    )
+
+    with pytest.raises(RuntimeError, match="name close failed") as error_info:
+        hello.close()
+
+    assert error_info.value is close_error
+    comm_attribute: str = "comm"
+    assert getattr(hello.name_input, comm_attribute) is not None
+    assert getattr(hello.greeting, comm_attribute) is None
+    assert getattr(hello.container, comm_attribute) is None
+
+    hello.close()
+    hello.name_input.value = "Grace"
+
+    assert name_close_calls == 2
+    assert unobserve_calls == 1
+    assert getattr(hello.name_input, comm_attribute) is None
+    assert hello.greeting.value == "Hello, Ada!"
+    assert external_values == ["Grace"]
+
+
+def test_close_retries_transient_unobserve_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hello: HelloWidget = create_hello_widget("Ada")
+    external_values: list[object] = []
+
+    def observe_external(change: Mapping[str, object]) -> None:
+        external_values.append(change["new"])
+
+    hello.name_input.observe(observe_external, names="value")
+    unobserve_attribute: str = "unobserve"
+    original_unobserve: Callable[..., None] = cast(
+        Callable[..., None],
+        getattr(hello.name_input, unobserve_attribute),
+    )
+    unobserve_calls: int = 0
+    unobserve_error: RuntimeError = RuntimeError("unobserve failed")
+
+    def fail_unobserve_once(*args: object, **kwargs: object) -> None:
+        nonlocal unobserve_calls
+        unobserve_calls += 1
+        if unobserve_calls == 1:
+            raise unobserve_error
+        original_unobserve(*args, **kwargs)
+
+    monkeypatch.setattr(
+        hello.name_input,
+        unobserve_attribute,
+        fail_unobserve_once,
+    )
+
+    with pytest.raises(RuntimeError, match="unobserve failed") as error_info:
+        hello.close()
+
+    assert error_info.value is unobserve_error
+    comm_attribute: str = "comm"
+    assert getattr(hello.name_input, comm_attribute) is None
+    assert getattr(hello.greeting, comm_attribute) is None
+    assert getattr(hello.container, comm_attribute) is None
+    hello.name_input.value = "Grace"
+    assert hello.greeting.value == "Hello, Grace!"
+
+    hello.close()
+    hello.close()
+    hello.name_input.value = "Katherine"
+
+    assert unobserve_calls == 2
+    assert hello.greeting.value == "Hello, Grace!"
+    assert external_values == ["Grace", "Katherine"]
+
+
 def test_main_displays_only_the_container(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

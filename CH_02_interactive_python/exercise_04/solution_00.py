@@ -34,12 +34,25 @@ class HelloWidget:
         if self._closed:
             return
 
-        object.__setattr__(self, "_closed", True)
+        first_error: Exception | None = None
         if self._observer is not None:
-            self.name_input.unobserve(self._observer, names="value")
-        self.name_input.close()
-        self.greeting.close()
-        self.container.close()
+            try:
+                self.name_input.unobserve(self._observer, names="value")
+            except Exception as error:
+                first_error = error
+            else:
+                object.__setattr__(self, "_observer", None)
+
+        for widget in (self.name_input, self.greeting, self.container):
+            try:
+                widget.close()
+            except Exception as error:
+                if first_error is None:
+                    first_error = error
+
+        if first_error is not None:
+            raise first_error
+        object.__setattr__(self, "_closed", True)
 
 
 def _greeting_text(name: str) -> str:

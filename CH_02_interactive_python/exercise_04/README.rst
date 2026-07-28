@@ -22,7 +22,8 @@ when called and displays the container.
 
 Call ``hello.close()`` when the bundle is no longer needed. Cleanup is
 idempotent, unregisters only the bundle's own observer, and closes the input,
-label, and container. Observers registered by callers remain untouched.
+label, and container. Observers registered by callers remain untouched. If a
+cleanup operation raises, calling ``close`` again retries unfinished cleanup.
 
 Notebook usage:
 

@@ -4,7 +4,7 @@ Exercise 1: execution timing
 Question
 --------
 
-1. Extend `track` function monitor execution time.
+1. Extend the `track` function to monitor execution time.
 
 Solution
 --------

@@ -24,7 +24,9 @@ def complete_source(
     column: int | None = None,
 ) -> list[str]:
     """Return Jedi completion spellings at a validated source position."""
-    lines: list[str] = source.splitlines() or [""]
+    lines: list[str] = source.splitlines()
+    if not lines or source.endswith(("\r", "\n")):
+        lines.append("")
     selected_line: int = len(lines) if line is None else line
     if not 1 <= selected_line <= len(lines):
         raise ValueError(

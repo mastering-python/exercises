@@ -11,16 +11,21 @@ Solution
 --------
 
 ``complete_source`` passes the source text to ``jedi.Script`` and returns the
-sorted, deduplicated ``name_with_symbols`` completion spellings. Jedi performs
-static analysis: the supplied source is never executed, even when it contains
-function calls or other runtime side effects. Importing the solution is also
-side-effect free; only the guarded module demonstration prints output.
+sorted, deduplicated ``name_with_symbols`` completion spellings. It does not
+directly execute runtime calls embedded in the supplied source text. This is
+not a sandbox or security boundary: Jedi may start an interpreter or import
+compiled modules for environment inference, so analyzing untrusted code or
+environments can have import-initialization side effects. Importing this
+solution module does not invoke completion; only the guarded module
+demonstration prints output.
 
 ``line`` uses Jedi's one-based line numbering and ``column`` is a zero-based
 offset within that line. When omitted, both coordinates target the end of the
-source as represented by ``source.splitlines() or [""]``. Explicit lines must
-be between 1 and the number of represented lines, and columns must be between
-0 and the selected line's length. Invalid coordinates raise ``ValueError``.
+final logical source line. Empty source contains one empty line. A terminal
+``\n``, ``\r``, or ``\r\n`` creates a final empty line, including after
+multiple trailing newlines. Explicit lines must be between 1 and the number of
+logical lines, and columns must be between 0 and the selected line's length.
+Invalid coordinates raise ``ValueError``.
 
 Incomplete or invalid Python is passed unchanged to Jedi for best-effort
 completion. Jedi and dependency failures propagate to the caller.

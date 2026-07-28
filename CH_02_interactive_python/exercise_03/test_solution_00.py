@@ -4,11 +4,31 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Protocol, cast
 
+import jedi  # type: ignore[import-untyped]
 import pytest
 
 from CH_02_interactive_python.exercise_03.solution_00 import complete_source
+
+
+class _JediCompletion(Protocol):
+    @property
+    def name_with_symbols(self) -> str: ...
+
+
+class _JediScript(Protocol):
+    def complete(self, line: int, column: int) -> Iterable[_JediCompletion]: ...
+
+
+def _direct_jedi_names(source: str, *, line: int, column: int) -> list[str]:
+    script: _JediScript = cast(_JediScript, jedi.Script(code=source))
+    completions: Iterable[_JediCompletion] = script.complete(line, column)
+    return sorted(
+        {completion.name_with_symbols for completion in completions},
+    )
 
 
 def test_pathlib_incomplete_import_includes_path() -> None:
@@ -66,6 +86,54 @@ def test_empty_source_uses_first_line_at_column_zero() -> None:
     assert completions == sorted(set(completions))
 
 
+def test_default_targets_terminal_empty_line() -> None:
+    source: str = "x\n"
+    expected: list[str] = _direct_jedi_names(source, line=2, column=0)
+
+    assert complete_source(source) == expected
+
+
+def test_explicit_terminal_empty_line_coordinate_is_valid() -> None:
+    source: str = "x\n"
+
+    assert complete_source(source, line=2, column=0) == _direct_jedi_names(
+        source,
+        line=2,
+        column=0,
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "final_line"),
+    [
+        ("x\n\n", 3),
+        ("x\r\n\r\n", 3),
+    ],
+)
+def test_default_targets_final_line_after_multiple_newlines(
+    source: str,
+    final_line: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int, int]] = []
+
+    class RecordingScript:
+        def __init__(self, *, code: str) -> None:
+            self.source: str = code
+
+        def complete(self, line: int, column: int) -> list[_FakeCompletion]:
+            calls.append((self.source, line, column))
+            return []
+
+    monkeypatch.setattr(
+        "CH_02_interactive_python.exercise_03.solution_00.jedi.Script",
+        RecordingScript,
+    )
+
+    assert complete_source(source) == []
+    assert calls == [(source, final_line, 0)]
+
+
 @pytest.mark.parametrize(
     ("source", "line", "column", "message"),
     [
@@ -92,6 +160,7 @@ def test_source_runtime_calls_are_not_executed(tmp_path: Path) -> None:
         f"from pathlib import Path\nPath({str(marker)!r}).write_text('changed')\nPath."
     )
 
+    # This checks direct source evaluation, not whether Jedi is a security sandbox.
     complete_source(source)
 
     assert marker.read_text() == "unchanged"

@@ -244,11 +244,23 @@ def test_module_demo_is_protected_by_exact_main_guard() -> None:
     final_statement: ast.stmt = tree.body[-1]
 
     assert isinstance(final_statement, ast.If)
-    assert ast.dump(final_statement.test, include_attributes=False) == (
-        "Compare(left=Name(id='__name__', ctx=Load()), ops=[Eq()], "
-        "comparators=[Constant(value='__main__')])"
-    )
+    assert isinstance(final_statement.test, ast.Compare)
+    assert isinstance(final_statement.test.left, ast.Name)
+    assert final_statement.test.left.id == "__name__"
+    assert isinstance(final_statement.test.left.ctx, ast.Load)
+    assert len(final_statement.test.ops) == 1
+    assert isinstance(final_statement.test.ops[0], ast.Eq)
+    assert len(final_statement.test.comparators) == 1
+    main_guard_value: ast.expr = final_statement.test.comparators[0]
+    assert isinstance(main_guard_value, ast.Constant)
+    assert main_guard_value.value == "__main__"
     assert len(final_statement.body) == 1
-    assert ast.dump(final_statement.body[0], include_attributes=False) == (
-        "Expr(value=Call(func=Name(id='main', ctx=Load()), args=[], keywords=[]))"
-    )
+    guarded_statement: ast.stmt = final_statement.body[0]
+    assert isinstance(guarded_statement, ast.Expr)
+    main_call: ast.expr = guarded_statement.value
+    assert isinstance(main_call, ast.Call)
+    assert isinstance(main_call.func, ast.Name)
+    assert main_call.func.id == "main"
+    assert isinstance(main_call.func.ctx, ast.Load)
+    assert main_call.args == []
+    assert main_call.keywords == []

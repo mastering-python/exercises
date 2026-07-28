@@ -13,12 +13,20 @@ Solution
 examples attached to the target and its members. One ``doctest.DocTestRunner``
 runs every discovered test, so the returned ``doctest.TestResults`` contains
 the aggregate ``failed`` and ``attempted`` totals. A target without examples
-returns zero for both totals.
+returns zero for both totals. The target's valid ``__name__`` is added to the
+doctest globals so locally defined functions and classes can reference
+themselves.
 
 Doctest failures are written to the runner's normal report and counted in the
 result rather than raised as exceptions. ``doctest.ELLIPSIS`` matching is
 enabled by default. Pass a different ``optionflags`` value, including ``0`` for
-exact matching, to control doctest comparison.
+exact matching, to control doctest comparison. Passing and empty targets remain
+silent even when the surrounding process has a ``-v`` argument.
+
+Calls through ``run_doctests`` are serialized because ``DocTestRunner``
+temporarily patches process-wide state. The lock prevents this API's own calls
+from overlapping; code that invokes ``doctest`` directly does not share the
+lock and is not synchronized.
 
 Dependencies
 ------------

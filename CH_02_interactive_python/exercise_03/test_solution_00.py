@@ -134,6 +134,17 @@ def test_default_targets_final_line_after_multiple_newlines(
     assert calls == [(source, final_line, 0)]
 
 
+def test_form_feed_stays_within_one_source_line() -> None:
+    source: str = "x =\f1"
+    expected: list[str] = _direct_jedi_names(
+        source,
+        line=1,
+        column=len(source),
+    )
+
+    assert complete_source(source) == expected
+
+
 @pytest.mark.parametrize(
     ("source", "line", "column", "message"),
     [

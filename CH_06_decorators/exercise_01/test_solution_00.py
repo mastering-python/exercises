@@ -235,6 +235,101 @@ def test_track_uses_callable_type_when_name_is_not_a_string() -> None:
     assert signature(tracked_increment) == signature(increment)
 
 
+def test_explicit_label_does_not_invoke_raising_name_getter() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class Increment:
+        def __init__(self) -> None:
+            self.name_reads: int = 0
+
+        @property
+        def __name__(self) -> str:
+            self.name_reads += 1
+            raise RuntimeError("name unavailable")
+
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+    tracked_increment: Callable[[int], int] = track(
+        increment,
+        label="increment",
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert reports == [Timing(label="increment", elapsed=2.0, failed=False)]
+    assert increment.name_reads == 0
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+
+
+def test_default_label_falls_back_when_name_getter_raises() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class Increment:
+        def __init__(self) -> None:
+            self.name_reads: int = 0
+
+        @property
+        def __name__(self) -> str:
+            self.name_reads += 1
+            raise RuntimeError("name unavailable")
+
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+    tracked_increment: Callable[[int], int] = track(
+        increment,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert increment.name_reads == 1
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+
+
+def test_changing_name_getter_is_snapshotted_once() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class Increment:
+        def __init__(self) -> None:
+            self.name_reads: int = 0
+
+        @property
+        def __name__(self) -> object:
+            self.name_reads += 1
+            if self.name_reads <= 2:
+                return "increment"
+            return 42
+
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+    tracked_increment: Callable[[int], int] = track(
+        increment,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert reports == [Timing(label="increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__name__", None) == "increment"
+    assert increment.name_reads == 1
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+    assert signature(tracked_increment) == signature(increment)
+
+
 def test_track_ignores_non_string_qualname_metadata() -> None:
     readings: Iterator[float] = iter((7.0, 9.0))
     reports: list[Timing] = []

@@ -3,7 +3,9 @@
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import WRAPPER_ASSIGNMENTS, WRAPPER_UPDATES, wraps
+from inspect import getattr_static
 from time import perf_counter
+from types import FunctionType
 from typing import ParamSpec, TypeVar, cast, overload
 
 P = ParamSpec("P")
@@ -25,24 +27,11 @@ def print_timing(timing: Timing) -> None:
     print(f"{timing.label} {status} in {timing.elapsed:.6f}s")
 
 
-def resolve_label(
+def snapshot_wrapper_metadata(
     function: Callable[..., object],
     label: str | None,
-) -> str:
-    """Return an explicit label or a deterministic callable-derived default."""
-    if label is not None:
-        return label
-
-    function_name: object = getattr(function, "__name__", None)
-    if isinstance(function_name, str):
-        return function_name
-    return type(function).__name__
-
-
-def select_wrapper_metadata(
-    function: Callable[..., object],
-) -> tuple[tuple[str, ...], tuple[str, ...], dict[str, object]]:
-    """Return safe wrapper assignments, updates, and filtered attributes."""
+) -> tuple[str, dict[str, object], dict[str, object]]:
+    """Snapshot a safe label, assigned metadata, and custom attributes."""
 
     def valid_assignment(attribute: str, value: object) -> bool:
         if attribute in {"__module__", "__name__", "__qualname__"}:
@@ -55,6 +44,14 @@ def select_wrapper_metadata(
             return isinstance(value, tuple)
         return False
 
+    def read_attribute(attribute: str, *, dynamically: bool = True) -> object:
+        try:
+            if dynamically:
+                return getattr(function, attribute, None)
+            return getattr_static(function, attribute, None)
+        except Exception:
+            return None
+
     assignment_attributes_list: list[str] = [
         str(attribute) for attribute in WRAPPER_ASSIGNMENTS
     ]
@@ -66,37 +63,46 @@ def select_wrapper_metadata(
         "__wrapped__",
     }
 
-    assigned: list[str] = []
-    for attribute in assignment_attributes:
-        value: object = getattr(function, attribute, None)
-        if valid_assignment(attribute, value):
-            assigned.append(attribute)
+    function_name: object
+    if label is not None and isinstance(function, FunctionType):
+        function_name = function.__name__
+    else:
+        function_name = read_attribute(
+            "__name__",
+            dynamically=label is None,
+        )
+    timing_label: str
+    if label is not None:
+        timing_label = label
+    elif isinstance(function_name, str):
+        timing_label = function_name
+    else:
+        timing_label = type(function).__name__
 
-    updated: list[str] = []
-    filtered_attributes: dict[str, object] = {}
+    assigned: dict[str, object] = {}
+    for attribute in assignment_attributes:
+        value: object
+        if attribute == "__name__":
+            value = function_name
+        else:
+            value = read_attribute(attribute)
+        if valid_assignment(attribute, value):
+            assigned[attribute] = value
+
+    custom_attributes: dict[str, object] = {}
     for attribute in WRAPPER_UPDATES:
-        source_updates: object = getattr(function, attribute, None)
+        source_updates: object = read_attribute(str(attribute))
         if not isinstance(source_updates, Mapping):
             continue
         source_mapping: Mapping[object, object] = cast(
             Mapping[object, object],
             source_updates,
         )
-        has_invalid_metadata: bool = any(
-            isinstance(key, str)
-            and key in assignment_attributes
-            and not valid_assignment(key, value)
-            for key, value in source_mapping.items()
-        )
-        if not has_invalid_metadata:
-            updated.append(attribute)
-            continue
-
         for key, value in source_mapping.items():
             if isinstance(key, str) and key not in reserved_attributes:
-                filtered_attributes[key] = value
+                custom_attributes[key] = value
 
-    return tuple(assigned), tuple(updated), filtered_attributes
+    return timing_label, assigned, custom_attributes
 
 
 def _decorate(
@@ -106,21 +112,20 @@ def _decorate(
     clock: Callable[[], float],
     reporter: Callable[[Timing], None],
 ) -> Callable[P, R]:
-    timing_label: str = resolve_label(function, label)
     wrapper_metadata: tuple[
-        tuple[str, ...],
-        tuple[str, ...],
+        str,
         dict[str, object],
-    ] = select_wrapper_metadata(function)
-    wrapper_assignments: tuple[str, ...] = wrapper_metadata[0]
-    wrapper_updates: tuple[str, ...] = wrapper_metadata[1]
-    filtered_attributes: dict[str, object] = wrapper_metadata[2]
+        dict[str, object],
+    ] = snapshot_wrapper_metadata(function, label)
+    timing_label: str = wrapper_metadata[0]
+    assigned_metadata: dict[str, object] = wrapper_metadata[1]
+    custom_attributes: dict[str, object] = wrapper_metadata[2]
 
     def report(started_at: float, *, failed: bool) -> None:
         elapsed: float = clock() - started_at
         reporter(Timing(label=timing_label, elapsed=elapsed, failed=failed))
 
-    @wraps(function, assigned=wrapper_assignments, updated=wrapper_updates)
+    @wraps(function, assigned=(), updated=())
     def tracked(*args: P.args, **kwargs: P.kwargs) -> R:
         started_at: float = clock()
         try:
@@ -135,7 +140,9 @@ def _decorate(
         report(started_at, failed=False)
         return result
 
-    tracked.__dict__.update(filtered_attributes)
+    tracked.__dict__.update(custom_attributes)
+    for attribute, value in assigned_metadata.items():
+        setattr(tracked, attribute, value)
     return tracked
 
 

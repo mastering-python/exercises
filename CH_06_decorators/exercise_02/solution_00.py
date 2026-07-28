@@ -9,8 +9,7 @@ from typing import ParamSpec, Protocol, TypeVar, cast, overload
 from CH_06_decorators.exercise_01.solution_00 import (
     Timing,
     print_timing,
-    resolve_label,
-    select_wrapper_metadata,
+    snapshot_wrapper_metadata,
 )
 
 P = ParamSpec("P")
@@ -69,16 +68,15 @@ def _decorate(
     clock: Callable[[], float],
     reporter: Callable[[Timing], None],
 ) -> TrackedCallable[P, R]:
-    timing_label: str = resolve_label(function, label)
     stats: TimingStats = TimingStats()
     wrapper_metadata: tuple[
-        tuple[str, ...],
-        tuple[str, ...],
+        str,
         dict[str, object],
-    ] = select_wrapper_metadata(function)
-    wrapper_assignments: tuple[str, ...] = wrapper_metadata[0]
-    wrapper_updates: tuple[str, ...] = wrapper_metadata[1]
-    filtered_attributes: dict[str, object] = wrapper_metadata[2]
+        dict[str, object],
+    ] = snapshot_wrapper_metadata(function, label)
+    timing_label: str = wrapper_metadata[0]
+    assigned_metadata: dict[str, object] = wrapper_metadata[1]
+    custom_attributes: dict[str, object] = wrapper_metadata[2]
 
     def finish(started_at: float, *, failed: bool) -> None:
         elapsed: float = clock() - started_at
@@ -90,7 +88,7 @@ def _decorate(
         stats.record(elapsed)
         reporter(timing)
 
-    @wraps(function, assigned=wrapper_assignments, updated=wrapper_updates)
+    @wraps(function, assigned=(), updated=())
     def tracked(*args: P.args, **kwargs: P.kwargs) -> R:
         started_at: float = clock()
         try:
@@ -105,7 +103,9 @@ def _decorate(
         finish(started_at, failed=False)
         return result
 
-    tracked.__dict__.update(filtered_attributes)
+    tracked.__dict__.update(custom_attributes)
+    for attribute, value in assigned_metadata.items():
+        setattr(tracked, attribute, value)
 
     def print_stats() -> None:
         print(

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import gc
 import subprocess
 import sys
+import weakref
+from collections.abc import Callable, Mapping
 from dataclasses import FrozenInstanceError
 from typing import Protocol, cast
 
@@ -109,6 +112,80 @@ def test_bundle_is_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         setattr(hello, field_name, widgets.Label(value="replacement"))
+
+
+def test_close_preserves_external_observer_and_stops_greeting_updates() -> None:
+    hello: HelloWidget = create_hello_widget("Ada")
+    external_values: list[object] = []
+
+    def observe_external(change: Mapping[str, object]) -> None:
+        external_values.append(change["new"])
+
+    hello.name_input.observe(observe_external, names="value")
+
+    hello.close()
+    hello.close()
+    hello.name_input.value = "Grace"
+
+    assert hello.greeting.value == "Hello, Ada!"
+    assert external_values == ["Grace"]
+
+
+def test_close_closes_each_owned_widget_exactly_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hello: HelloWidget = create_hello_widget()
+    owned_widgets: tuple[object, ...] = (
+        hello.name_input,
+        hello.greeting,
+        hello.container,
+    )
+    close_calls: dict[int, int] = {id(widget): 0 for widget in owned_widgets}
+
+    def counting_close(
+        widget_id: int,
+        original_close: Callable[..., None],
+    ) -> Callable[..., None]:
+        def record_close(*args: object, **kwargs: object) -> None:
+            close_calls[widget_id] += 1
+            original_close(*args, **kwargs)
+
+        return record_close
+
+    comm_attribute: str = "comm"
+    close_attribute: str = "close"
+    for widget in owned_widgets:
+        comm: object = getattr(widget, comm_attribute)
+        original_close: Callable[..., None] = cast(
+            Callable[..., None],
+            getattr(comm, close_attribute),
+        )
+        monkeypatch.setattr(
+            comm,
+            close_attribute,
+            counting_close(id(widget), original_close),
+        )
+
+    hello.close()
+    hello.close()
+
+    assert close_calls == {id(widget): 1 for widget in owned_widgets}
+    assert all(getattr(widget, comm_attribute) is None for widget in owned_widgets)
+
+
+def test_close_releases_internal_greeting_reference() -> None:
+    hello: HelloWidget = create_hello_widget()
+    retained_name_input: widgets.Text = hello.name_input
+    greeting_reference: weakref.ReferenceType[widgets.Label] = weakref.ref(
+        hello.greeting,
+    )
+
+    hello.close()
+    del hello
+    gc.collect()
+
+    assert greeting_reference() is None
+    assert retained_name_input.value == "World"
 
 
 def test_main_displays_only_the_container(

@@ -20,6 +20,10 @@ the bundle are headless: neither operation displays a widget, opens a browser,
 nor requires a running notebook. ``main`` imports IPython's display helper only
 when called and displays the container.
 
+Call ``hello.close()`` when the bundle is no longer needed. Cleanup is
+idempotent, unregisters only the bundle's own observer, and closes the input,
+label, and container. Observers registered by callers remain untouched.
+
 Notebook usage:
 
 .. code-block:: python

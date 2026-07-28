@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import cast
 
 import ipywidgets as widgets  # type: ignore[import-untyped]
@@ -16,6 +16,30 @@ class HelloWidget:
     name_input: widgets.Text
     greeting: widgets.Label
     container: widgets.VBox
+    _observer: Callable[[Mapping[str, object]], None] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _closed: bool = field(
+        default=False,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
+    def close(self) -> None:
+        """Unregister internal state and close every owned widget once."""
+        if self._closed:
+            return
+
+        object.__setattr__(self, "_closed", True)
+        if self._observer is not None:
+            self.name_input.unobserve(self._observer, names="value")
+        self.name_input.close()
+        self.greeting.close()
+        self.container.close()
 
 
 def _greeting_text(name: str) -> str:
@@ -38,11 +62,13 @@ def create_hello_widget(initial_name: str = "World") -> HelloWidget:
 
     name_input.observe(update_greeting, names="value")
     container: widgets.VBox = widgets.VBox(children=(name_input, greeting))
-    return HelloWidget(
+    hello: HelloWidget = HelloWidget(
         name_input=name_input,
         greeting=greeting,
         container=container,
     )
+    object.__setattr__(hello, "_observer", update_greeting)
+    return hello
 
 
 def main() -> None:

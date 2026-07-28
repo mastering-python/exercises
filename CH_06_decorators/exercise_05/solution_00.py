@@ -132,7 +132,7 @@ class CachedProperty(Generic[T, R]):
             function,
             "__annotations__",
         )
-        if isinstance(annotations, dict):
+        if type(annotations) is dict:
             annotation_items: dict[object, object] = cast(
                 dict[object, object],
                 annotations,

@@ -238,6 +238,21 @@ def test_malformed_standard_metadata_is_ignored() -> None:
     assert descriptor.__wrapped__ is function
 
 
+def test_hostile_annotations_dict_is_not_iterated() -> None:
+    class ExplodingDict(dict[str, object]):
+        def __iter__(self) -> NoReturn:
+            raise RuntimeError("do not iterate")
+
+    def original(self: object) -> int:
+        return 42
+
+    original.__annotations__ = ExplodingDict({"return": int})
+
+    descriptor: CachedProperty[object, int] = CachedProperty(original)
+
+    assert descriptor.__annotations__ == {}
+
+
 def test_partial_is_a_supported_callable() -> None:
     class Example:
         pass

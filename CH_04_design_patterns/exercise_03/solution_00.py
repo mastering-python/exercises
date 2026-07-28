@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, ClassVar, TypeVar, cast
 
 _BorgT = TypeVar("_BorgT", bound="Borg")
@@ -8,17 +9,19 @@ _BorgT = TypeVar("_BorgT", bound="Borg")
 class Borg:
     """Share attribute state between instances of each exact class."""
 
-    _state: ClassVar[dict[str, object]] = {}
+    _shared_state: ClassVar[dict[str, object]] = {}
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        cls._state = {}
+        cls._shared_state = {}
 
     def __new__(cls: type[_BorgT], *args: Any, **kwargs: Any) -> _BorgT:
         del args, kwargs
-        borg_type: type[Borg] = cast(type[Borg], cls)
-        instance: _BorgT = cast(_BorgT, object.__new__(borg_type))
-        instance.__dict__ = cls._state
+        allocator: Callable[[type[_BorgT]], _BorgT] = cast(
+            Callable[[type[_BorgT]], _BorgT], super().__new__
+        )
+        instance: _BorgT = allocator(cls)
+        object.__setattr__(instance, "__dict__", cls._shared_state)
         return instance
 
 

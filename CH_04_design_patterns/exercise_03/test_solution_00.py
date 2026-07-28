@@ -180,6 +180,39 @@ def test_subclass_keywords_are_forwarded_to_cooperative_bases() -> None:
     assert second.value == 7
 
 
+def test_later_mro_cooperative_new_runs_and_combined_state_is_shared() -> None:
+    class NewHook:
+        calls: ClassVar[list[type[object]]] = []
+
+        def __new__(cls) -> NewHook:
+            NewHook.calls.append(cls)
+            return super().__new__(cls)
+
+    class Combined(Borg, NewHook):
+        label: str
+
+    first: Combined = Combined()
+    second: Combined = Combined()
+    first.label = "shared"
+
+    assert NewHook.calls == [Combined, Combined]
+    assert second.label == "shared"
+
+
+def test_shared_dict_binding_bypasses_restrictive_setattr() -> None:
+    class AssignmentBlocking(Borg):
+        value: int
+
+        def __setattr__(self, name: str, value: object) -> None:
+            raise AttributeError(f"cannot set {name} to {value!r}")
+
+    first: AssignmentBlocking = AssignmentBlocking()
+    second: AssignmentBlocking = AssignmentBlocking()
+    object.__setattr__(first, "value", 23)
+
+    assert second.value == 23
+
+
 def test_import_is_silent() -> None:
     result: subprocess.CompletedProcess[str] = subprocess.run(
         [sys.executable, "-c", f"import {MODULE_NAME}"],

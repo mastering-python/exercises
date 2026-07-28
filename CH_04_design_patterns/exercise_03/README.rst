@@ -10,10 +10,12 @@ Answer
 ------
 
 ``Borg`` keeps ordinary object identity while making instances of the same
-exact class share one attribute dictionary.  It therefore differs from a
+exact class share one instance ``__dict__``.  It therefore differs from a
 singleton: constructing a ``Borg`` repeatedly returns distinct objects, but
-attribute assignments and deletions made through one instance are visible
-through every other instance of that exact class.
+assignments and deletions stored in one instance's ``__dict__`` are visible
+through every other instance of that exact class.  Attributes backed by
+nonempty ``__slots__`` or other data descriptors can use per-instance storage
+outside that dictionary and are not part of the shared-state contract.
 
 The base class owns its own shared state.  Each subclass receives a fresh
 state dictionary when the subclass is created, including subclasses of
@@ -21,7 +23,9 @@ subclasses.  State is consequently shared by instances of one exact class but
 not inherited at runtime by sibling, parent, or grandchild instances.
 Subclass ``__init__`` methods still run for every construction, so their
 assignments update that exact class's shared state; merely constructing another
-instance does not otherwise reset it.
+instance does not otherwise reset it.  Allocation is cooperative in multiple
+inheritance: later ``__new__`` hooks in the method resolution order are called
+when they also delegate with ``super().__new__(cls)``.
 
 The Borg pattern is described in the immutable upstream reference:
 https://github.com/mastering-python/code_2/blob/a012f6ce3f5bf11f5bf380d1c4e7f743355adb89/CH_04_design_patterns/T_11_borg_and_singleton.rst

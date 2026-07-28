@@ -35,6 +35,14 @@ class Record:
         return self.rank < other.rank
 
 
+class GreaterOnly:
+    def __init__(self, rank: int) -> None:
+        self.rank: int = rank
+
+    def __gt__(self, other: GreaterOnly) -> bool:
+        return self.rank > other.rank
+
+
 class CountedValue:
     comparisons: ClassVar[int] = 0
 
@@ -136,6 +144,15 @@ def test_quicksort_uses_only_less_than_and_preserves_equivalent_records() -> Non
     assert result == [lower, first, second, third]
 
 
+def test_quicksort_uses_reflected_greater_than_comparison() -> None:
+    values: list[GreaterOnly] = [GreaterOnly(3), GreaterOnly(1), GreaterOnly(2)]
+
+    result: list[GreaterOnly] = quicksort(values)
+
+    assert result == sorted(values)
+    assert values[0].rank == 3
+
+
 @pytest.mark.parametrize(
     "raw_values",
     [
@@ -192,13 +209,23 @@ def test_static_typing_accepts_concrete_comparable_types(
                     return self.rank < other.rank
 
 
+            class GreaterOnly:
+                def __init__(self, rank: int) -> None:
+                    self.rank: int = rank
+
+                def __gt__(self, other: GreaterOnly) -> bool:
+                    return self.rank > other.rank
+
+
             integers = quicksort([3, 1, 2])
             strings = qs(["c", "a", "b"])
             records = quicksort([Record(2), Record(1)])
+            greater_only = quicksort([GreaterOnly(2), GreaterOnly(1)])
 
             reveal_type(integers)
             reveal_type(strings)
             reveal_type(records)
+            reveal_type(greater_only)
             """
         ),
         encoding="utf-8",
@@ -212,10 +239,12 @@ def test_static_typing_accepts_concrete_comparable_types(
         assert 'Revealed type is "list[int]"' in output
         assert 'Revealed type is "list[str]"' in output
         assert 'Revealed type is "list[valid_quicksort_typing.Record]"' in output
+        assert 'Revealed type is "list[valid_quicksort_typing.GreaterOnly]"' in output
     else:
         assert 'Type of "integers" is "list[int]"' in output
         assert 'Type of "strings" is "list[str]"' in output
         assert 'Type of "records" is "list[Record]"' in output
+        assert 'Type of "greater_only" is "list[GreaterOnly]"' in output
 
 
 @pytest.mark.parametrize("checker", ["mypy", "pyright"])

@@ -1,7 +1,7 @@
 """Implement the quicksort algorithm."""
 
 from collections.abc import Iterable
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar, cast
 
 T_contra = TypeVar("T_contra", contravariant=True)
 
@@ -10,7 +10,14 @@ class SupportsLessThan(Protocol[T_contra]):
     def __lt__(self, other: T_contra, /) -> bool: ...
 
 
-T = TypeVar("T", bound=SupportsLessThan[Any])
+class SupportsGreaterThan(Protocol[T_contra]):
+    def __gt__(self, other: T_contra, /) -> bool: ...
+
+
+T = TypeVar(
+    "T",
+    bound=SupportsLessThan[Any] | SupportsGreaterThan[Any],
+)
 
 
 def _quicksort(values: list[T]) -> list[T]:
@@ -22,7 +29,8 @@ def _quicksort(values: list[T]) -> list[T]:
     lower: list[T] = []
     upper: list[T] = []
     for value in iterator:
-        if value < pivot:
+        comparable: SupportsLessThan[Any] = cast(SupportsLessThan[Any], value)
+        if comparable < pivot:
             lower.append(value)
         else:
             upper.append(value)
@@ -31,13 +39,21 @@ def _quicksort(values: list[T]) -> list[T]:
 
 
 def quicksort(values: Iterable[T]) -> list[T]:
-    """Return the values in ascending order without mutating the input."""
+    """Return a fresh sorted list after consuming the iterable once.
+
+    Mutable input containers are not structurally modified, and the algorithm
+    directly mutates no elements.
+    """
     materialized: list[T] = list(values)
     return _quicksort(materialized)
 
 
 def qs(values: Iterable[T]) -> list[T]:
-    """Compatibility wrapper for the historical short function name."""
+    """Return a fresh sorted list after consuming the iterable once.
+
+    Mutable input containers are not structurally modified, and this
+    compatibility wrapper directly mutates no elements.
+    """
     return quicksort(values)
 
 

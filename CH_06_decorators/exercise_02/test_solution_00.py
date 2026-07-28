@@ -198,6 +198,8 @@ def test_default_label_falls_back_to_callable_type_name(
     assert result == 10
     assert tracked_double.stats == TimingStats(1, 2.0, 2.0, 2.0)
     assert reports == [Timing(label="partial", elapsed=2.0, failed=False)]
+    assert getattr(tracked_double, "__wrapped__", None) is double
+    assert signature(tracked_double) == signature(double)
     assert capsys.readouterr().out == (
         "partial stats: count=1, total=2.000000s, minimum=2.000000s, "
         "maximum=2.000000s, average=2.000000s\n"
@@ -214,8 +216,9 @@ def test_explicit_label_wins_for_callable_with_non_string_name() -> None:
         def __call__(self, value: int) -> int:
             return value + 1
 
+    increment: Increment = Increment()
     tracked_increment: TrackedCallable[[int], int] = track(
-        Increment(),
+        increment,
         label="increment",
         clock=readings.__next__,
         reporter=reports.append,
@@ -226,6 +229,35 @@ def test_explicit_label_wins_for_callable_with_non_string_name() -> None:
     assert result == 6
     assert tracked_increment.stats == TimingStats(1, 2.0, 2.0, 2.0)
     assert reports == [Timing(label="increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+    assert signature(tracked_increment) == signature(increment)
+
+
+def test_malformed_metadata_callable_inherits_safe_wrapping() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class Increment:
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+    increment.__dict__["__qualname__"] = 42
+    annotations_attribute: str = "__annotations__"
+    setattr(increment, annotations_attribute, 42)
+
+    tracked_increment: TrackedCallable[[int], int] = track(
+        increment,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert tracked_increment.stats == TimingStats(1, 2.0, 2.0, 2.0)
+    assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+    assert signature(tracked_increment) == signature(increment)
 
 
 def test_reporter_failure_after_success_propagates_after_recording() -> None:

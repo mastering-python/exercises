@@ -1,8 +1,8 @@
 """Track function execution time with an injectable clock and reporter."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from functools import WRAPPER_ASSIGNMENTS, wraps
+from functools import WRAPPER_ASSIGNMENTS, WRAPPER_UPDATES, wraps
 from time import perf_counter
 from typing import ParamSpec, TypeVar, overload
 
@@ -39,6 +39,39 @@ def resolve_label(
     return type(function).__name__
 
 
+def select_wrapper_metadata(
+    function: Callable[..., object],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return wrapper assignments and updates safe for a function wrapper."""
+    assigned: list[str] = []
+    assignment_attributes: tuple[str, ...] = tuple(
+        str(attribute) for attribute in WRAPPER_ASSIGNMENTS
+    )
+    for attribute in assignment_attributes:
+        value: object = getattr(function, attribute, None)
+        valid_assignment: bool
+        if attribute in {"__module__", "__name__", "__qualname__"}:
+            valid_assignment = isinstance(value, str)
+        elif attribute == "__doc__":
+            valid_assignment = value is None or isinstance(value, str)
+        elif attribute == "__annotations__":
+            valid_assignment = isinstance(value, dict)
+        elif attribute == "__type_params__":
+            valid_assignment = isinstance(value, tuple)
+        else:
+            valid_assignment = False
+
+        if valid_assignment:
+            assigned.append(attribute)
+
+    updated: tuple[str, ...] = tuple(
+        attribute
+        for attribute in WRAPPER_UPDATES
+        if isinstance(getattr(function, attribute, None), Mapping)
+    )
+    return tuple(assigned), updated
+
+
 def _decorate(
     function: Callable[P, R],
     *,
@@ -47,18 +80,17 @@ def _decorate(
     reporter: Callable[[Timing], None],
 ) -> Callable[P, R]:
     timing_label: str = resolve_label(function, label)
-    wrapper_assignments: tuple[str, ...] = tuple(
-        attribute
-        for attribute in WRAPPER_ASSIGNMENTS
-        if attribute != "__name__"
-        or isinstance(getattr(function, attribute, None), str)
+    wrapper_metadata: tuple[tuple[str, ...], tuple[str, ...]] = select_wrapper_metadata(
+        function
     )
+    wrapper_assignments: tuple[str, ...] = wrapper_metadata[0]
+    wrapper_updates: tuple[str, ...] = wrapper_metadata[1]
 
     def report(started_at: float, *, failed: bool) -> None:
         elapsed: float = clock() - started_at
         reporter(Timing(label=timing_label, elapsed=elapsed, failed=failed))
 
-    @wraps(function, assigned=wrapper_assignments)
+    @wraps(function, assigned=wrapper_assignments, updated=wrapper_updates)
     def tracked(*args: P.args, **kwargs: P.kwargs) -> R:
         started_at: float = clock()
         try:

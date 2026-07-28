@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from functools import WRAPPER_ASSIGNMENTS, wraps
+from functools import wraps
 from time import perf_counter
 from typing import ParamSpec, Protocol, TypeVar, cast, overload
 
@@ -10,6 +10,7 @@ from CH_06_decorators.exercise_01.solution_00 import (
     Timing,
     print_timing,
     resolve_label,
+    select_wrapper_metadata,
 )
 
 P = ParamSpec("P")
@@ -70,12 +71,11 @@ def _decorate(
 ) -> TrackedCallable[P, R]:
     timing_label: str = resolve_label(function, label)
     stats: TimingStats = TimingStats()
-    wrapper_assignments: tuple[str, ...] = tuple(
-        attribute
-        for attribute in WRAPPER_ASSIGNMENTS
-        if attribute != "__name__"
-        or isinstance(getattr(function, attribute, None), str)
+    wrapper_metadata: tuple[tuple[str, ...], tuple[str, ...]] = select_wrapper_metadata(
+        function
     )
+    wrapper_assignments: tuple[str, ...] = wrapper_metadata[0]
+    wrapper_updates: tuple[str, ...] = wrapper_metadata[1]
 
     def finish(started_at: float, *, failed: bool) -> None:
         elapsed: float = clock() - started_at
@@ -87,7 +87,7 @@ def _decorate(
         stats.record(elapsed)
         reporter(timing)
 
-    @wraps(function, assigned=wrapper_assignments)
+    @wraps(function, assigned=wrapper_assignments, updated=wrapper_updates)
     def tracked(*args: P.args, **kwargs: P.kwargs) -> R:
         started_at: float = clock()
         try:

@@ -206,6 +206,8 @@ def test_track_uses_callable_type_as_default_label_without_name() -> None:
 
     assert result == 15
     assert reports == [Timing(label="partial", elapsed=2.0, failed=False)]
+    assert getattr(tracked_add_ten, "__wrapped__", None) is add_ten
+    assert signature(tracked_add_ten) == signature(add_ten)
 
 
 def test_track_uses_callable_type_when_name_is_not_a_string() -> None:
@@ -218,8 +220,9 @@ def test_track_uses_callable_type_when_name_is_not_a_string() -> None:
         def __call__(self, value: int) -> int:
             return value + 1
 
+    increment: Increment = Increment()
     tracked_increment: Callable[[int], int] = track(
-        Increment(),
+        increment,
         clock=readings.__next__,
         reporter=reports.append,
     )
@@ -228,6 +231,85 @@ def test_track_uses_callable_type_when_name_is_not_a_string() -> None:
 
     assert result == 6
     assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+    assert signature(tracked_increment) == signature(increment)
+
+
+def test_track_ignores_non_string_qualname_metadata() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class Increment:
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+    increment.__dict__["__qualname__"] = 42
+
+    tracked_increment: Callable[[int], int] = track(
+        increment,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+    assert signature(tracked_increment) == signature(increment)
+
+
+def test_track_ignores_non_dict_annotations_with_explicit_label() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class Increment:
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+    annotations_attribute: str = "__annotations__"
+    setattr(increment, annotations_attribute, 42)
+
+    tracked_increment: Callable[[int], int] = track(
+        increment,
+        label="increment",
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert reports == [Timing(label="increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+    assert signature(tracked_increment) == signature(increment)
+
+
+def test_track_ignores_non_mapping_wrapper_updates() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class Increment:
+        def __getattribute__(self, attribute: str) -> object:
+            if attribute == "__dict__":
+                return 42
+            return super().__getattribute__(attribute)
+
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+    tracked_increment: Callable[[int], int] = track(
+        increment,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+    assert signature(tracked_increment) == signature(increment)
 
 
 def test_track_forwards_positional_and_keyword_arguments() -> None:
@@ -251,15 +333,20 @@ def test_track_preserves_function_metadata_and_signature() -> None:
         """Return a greeting."""
         return f"Hello, {name}{punctuation}"
 
+    greet.__dict__["category"] = "salutation"
     tracked_greet: Callable[[str, str], str] = track(
         clock=readings.__next__,
         reporter=reports.append,
     )(greet)
 
     assert tracked_greet.__name__ == "greet"
+    assert tracked_greet.__module__ == greet.__module__
+    assert tracked_greet.__qualname__ == greet.__qualname__
     assert tracked_greet.__doc__ == "Return a greeting."
+    assert tracked_greet.__annotations__ == greet.__annotations__
     assert getattr(tracked_greet, "__wrapped__", None) is greet
     assert signature(tracked_greet) == signature(greet)
+    assert getattr(tracked_greet, "category", None) == "salutation"
 
 
 @pytest.mark.parametrize(

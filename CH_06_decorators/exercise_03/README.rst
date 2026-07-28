@@ -26,10 +26,11 @@ argument")``.  Other unhashable objects raise ``TypeError`` naming the
 unsupported type.
 
 The module-level ``cache`` lives for the lifetime of the Python process.
-Every key includes the decorated function, so different functions cannot
-reuse one another's results.  Keyword argument order does not affect a key.
-``None`` is a normal cached result.  A call that raises an exception is not
-cached and will run again on the next call.
+Every decoration receives a unique opaque namespace in its cache keys, so
+distinct functions and callable objects cannot reuse one another's results.
+Keyword argument order does not affect a key.  ``None`` is a normal cached
+result.  A call that raises an exception is not cached and will run again on
+the next call.
 
 Running
 -------

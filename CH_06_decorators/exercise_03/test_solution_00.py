@@ -125,6 +125,54 @@ def test_different_decorated_functions_do_not_share_entries() -> None:
     assert len(cache) == 2
 
 
+def test_equal_hashable_callable_instances_have_independent_entries() -> None:
+    class EqualCallable:
+        def __init__(self, label: str) -> None:
+            self.label: str = label
+            self.calls: int = 0
+
+        def __call__(self, value: int) -> str:
+            self.calls += 1
+            return f"{self.label}:{value}"
+
+        def __hash__(self) -> int:
+            return 1
+
+        def __eq__(self, other: object) -> bool:
+            return isinstance(other, EqualCallable)
+
+    first_callable: EqualCallable = EqualCallable("first")
+    second_callable: EqualCallable = EqualCallable("second")
+    first = memoize(first_callable)
+    second = memoize(second_callable)
+
+    assert first(1) == "first:1"
+    assert second(1) == "second:1"
+    assert first(1) == "first:1"
+    assert second(1) == "second:1"
+    assert first_callable.calls == 1
+    assert second_callable.calls == 1
+    assert len(cache) == 2
+
+
+def test_unhashable_callable_instance_can_be_memoized() -> None:
+    @dataclass
+    class UnhashableCallable:
+        calls: int = 0
+
+        def __call__(self, value: int) -> int:
+            self.calls += 1
+            return value * 2
+
+    callable_instance: UnhashableCallable = UnhashableCallable()
+    decorated = memoize(callable_instance)
+
+    assert decorated(3) == 6
+    assert decorated(3) == 6
+    assert callable_instance.calls == 1
+    assert len(cache) == 1
+
+
 def test_keyword_argument_order_does_not_affect_cache_key() -> None:
     calls: list[int] = []
 

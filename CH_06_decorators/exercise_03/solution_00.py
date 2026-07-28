@@ -9,7 +9,7 @@ __all__: list[str] = ["cache", "memoize"]
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
-_CacheKey: TypeAlias = tuple[Callable[..., object], Hashable, Hashable]
+_CacheKey: TypeAlias = tuple[object, Hashable, Hashable]
 
 cache: dict[_CacheKey, object] = {}
 _MISSING: object = object()
@@ -71,10 +71,11 @@ def _freeze(value: object, active: set[int] | None = None) -> Hashable:
 
 def memoize(function: Callable[_P, _R]) -> Callable[_P, _R]:
     """Cache successful calls by function and frozen arguments."""
+    namespace: object = object()
 
     @wraps(function)
     def _memoize(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        key: _CacheKey = (function, _freeze(args), _freeze(kwargs))
+        key: _CacheKey = (namespace, _freeze(args), _freeze(kwargs))
         cached: object = cache.get(key, _MISSING)
         if cached is not _MISSING:
             return cast(_R, cached)

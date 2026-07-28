@@ -1,4 +1,4 @@
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, MutableMapping
 from functools import wraps
 from types import FunctionType
 from typing import ParamSpec, Protocol, TypeAlias, TypeVar, cast
@@ -14,67 +14,75 @@ class _ClassMethodDescriptor(Protocol):
     def __func__(self) -> Method: ...
 
 
-def _wrapped_namespace(
-    namespace: Mapping[str, object],
+def _wrap_namespace(
+    namespace: MutableMapping[str, object],
     wrapper: Callable[[Method], Method] | None,
-) -> dict[str, object]:
-    """Return a class namespace with its direct public methods wrapped."""
-    wrapped_namespace: dict[str, object] = dict(namespace)
+) -> None:
+    """Wrap direct public methods in a prepared class namespace."""
     if wrapper is None:
-        return wrapped_namespace
+        return
 
-    for attribute_name, attribute in namespace.items():
+    namespace_items: list[tuple[str, object]] = list(namespace.items())
+    for attribute_name, attribute in namespace_items:
         if attribute_name.startswith("__") and attribute_name.endswith("__"):
             continue
         if isinstance(attribute, FunctionType):
-            wrapped_namespace[attribute_name] = wrapper(attribute)
+            namespace[attribute_name] = wrapper(attribute)
         elif isinstance(attribute, staticmethod):
             static_method: Method = cast(Method, attribute.__func__)
-            wrapped_namespace[attribute_name] = staticmethod(wrapper(static_method))
+            namespace[attribute_name] = staticmethod(wrapper(static_method))
         elif isinstance(attribute, classmethod):
             descriptor: _ClassMethodDescriptor = cast(
                 _ClassMethodDescriptor,
                 attribute,
             )
-            wrapped_namespace[attribute_name] = classmethod(
+            namespace[attribute_name] = classmethod(
                 wrapper(descriptor.__func__),
             )
-
-    return wrapped_namespace
 
 
 class WrappingMeta(type):
     """Wrap methods defined directly in a class namespace."""
 
+    @classmethod
+    def __prepare__(
+        mcls: type["WrappingMeta"],
+        name: str,
+        bases: tuple[type, ...],
+        /,
+        *,
+        wrapper: Callable[[Method], Method] | None = None,
+        **kwargs: object,
+    ) -> MutableMapping[str, object]:
+        """Consume wrapper before preparing a class namespace cooperatively."""
+        return super().__prepare__(name, bases, **kwargs)
+
     def __new__(
         cls: type["WrappingMeta"],
         name: str,
         bases: tuple[type, ...],
-        namespace: Mapping[str, object],
+        namespace: MutableMapping[str, object],
         *,
         wrapper: Callable[[Method], Method] | None = None,
         **kwargs: object,
     ) -> "WrappingMeta":
         """Create a class after wrapping its direct public methods."""
-        return super().__new__(
-            cls,
-            name,
-            bases,
-            _wrapped_namespace(namespace, wrapper),
-            **kwargs,
-        )
+        _wrap_namespace(namespace, wrapper)
+        class_namespace: dict[str, object] = cast(dict[str, object], namespace)
+        return super().__new__(cls, name, bases, class_namespace, **kwargs)
 
     def __init__(
         self,
         name: str,
         bases: tuple[type, ...],
-        namespace: Mapping[str, object],
+        namespace: MutableMapping[str, object],
         *,
         wrapper: Callable[[Method], Method] | None = None,
         **kwargs: object,
     ) -> None:
         """Consume the wrapper keyword and initialize cooperatively."""
-        super().__init__(name, bases, dict(namespace), **kwargs)
+        class_namespace: dict[str, object] = cast(dict[str, object], namespace)
+        super().__init__(name, bases, class_namespace, **kwargs)
 
 
 def print_call(

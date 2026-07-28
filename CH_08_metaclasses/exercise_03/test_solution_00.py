@@ -1,7 +1,7 @@
 import inspect
 import subprocess
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, MutableMapping
 from typing import ClassVar, Protocol, cast
 
 import pytest
@@ -163,49 +163,119 @@ def test_none_wrapper_leaves_methods_unchanged() -> None:
     assert Example().method() == "unchanged"
 
 
-def test_wrapper_keyword_is_consumed_and_other_keywords_are_forwarded() -> None:
-    events: list[tuple[str, object]] = []
+@pytest.mark.parametrize("wrapper_enabled", [True, False])
+def test_cooperative_lifecycle_preserves_prepared_namespace(
+    wrapper_enabled: bool,
+) -> None:
+    events: list[tuple[str, str]] = []
+    prepared_namespaces: list[MutableMapping[str, object]] = []
+    received_namespaces: list[MutableMapping[str, object]] = []
+    received_methods: list[object] = []
+    received_keywords: list[dict[str, object]] = []
+    received_prepare_wrappers: list[Callable[[Method], Method] | None] = []
+    wrapper_calls: list[str] = []
+    wrapper: Callable[[Method], Method] | None = (
+        recording_wrapper(wrapper_calls) if wrapper_enabled else None
+    )
 
-    class CooperativeMeta(type):
-        def __new__(
-            cls: type["CooperativeMeta"],
+    def missing_wrapper(method: Method) -> Method:
+        raise AssertionError(f"unexpected wrapper call for {method.__name__}")
+
+    class PreparedNamespace(dict[str, object]):
+        pass
+
+    class LifecycleMeta(type):
+        @classmethod
+        def __prepare__(
+            mcls: type["LifecycleMeta"],
             name: str,
             bases: tuple[type, ...],
-            namespace: Mapping[str, object],
+            /,
             *,
-            marker: object,
+            wrapper: Callable[[Method], Method] | None = missing_wrapper,
             **kwargs: object,
-        ) -> "CooperativeMeta":
+        ) -> MutableMapping[str, object]:
+            received_prepare_wrappers.append(wrapper)
+            marker_value: object = kwargs.pop("marker", "")
+            assert isinstance(marker_value, str)
+            marker: str = marker_value
+            events.append(("prepare", marker))
+            received_keywords.append(dict(kwargs))
+            namespace: PreparedNamespace = PreparedNamespace()
+            prepared_namespaces.append(namespace)
+            return namespace
+
+        def __new__(
+            cls: type["LifecycleMeta"],
+            name: str,
+            bases: tuple[type, ...],
+            namespace: MutableMapping[str, object],
+            *,
+            marker: str,
+            **kwargs: object,
+        ) -> "LifecycleMeta":
             events.append(("new", marker))
-            return super().__new__(cls, name, bases, dict(namespace), **kwargs)
+            received_keywords.append(dict(kwargs))
+            received_namespaces.append(namespace)
+            received_methods.append(namespace["method"])
+            class_namespace: dict[str, object] = cast(
+                dict[str, object],
+                namespace,
+            )
+            return super().__new__(cls, name, bases, class_namespace)
 
         def __init__(
             self,
             name: str,
             bases: tuple[type, ...],
-            namespace: Mapping[str, object],
+            namespace: MutableMapping[str, object],
             *,
-            marker: object,
+            marker: str,
             **kwargs: object,
         ) -> None:
             events.append(("init", marker))
-            super().__init__(name, bases, dict(namespace), **kwargs)
+            received_keywords.append(dict(kwargs))
+            received_namespaces.append(namespace)
+            received_methods.append(namespace["method"])
+            class_namespace: dict[str, object] = cast(
+                dict[str, object],
+                namespace,
+            )
+            super().__init__(name, bases, class_namespace)
 
-    class CombinedMeta(WrappingMeta, CooperativeMeta):
+    class CombinedMeta(WrappingMeta, LifecycleMeta):
         pass
-
-    marker: object = object()
 
     class Example(
         metaclass=CombinedMeta,
-        wrapper=print_call,
-        marker=marker,
+        wrapper=wrapper,
+        marker="cooperative",
     ):
         def method(self) -> str:
-            return "wrapped"
+            return "result"
 
-    assert events == [("new", marker), ("init", marker)]
-    assert Example().method() == "wrapped"
+    assert events == [
+        ("prepare", "cooperative"),
+        ("new", "cooperative"),
+        ("init", "cooperative"),
+    ]
+    assert received_prepare_wrappers == [missing_wrapper]
+    assert received_keywords == [{}, {}, {}]
+    assert len(prepared_namespaces) == 1
+    prepared_namespace: MutableMapping[str, object] = prepared_namespaces[0]
+    assert type(prepared_namespace) is PreparedNamespace
+    assert received_namespaces == [prepared_namespace, prepared_namespace]
+    assert received_namespaces[0] is prepared_namespace
+    assert received_namespaces[1] is prepared_namespace
+    assert received_methods == [
+        prepared_namespace["method"],
+        prepared_namespace["method"],
+    ]
+    prepared_method: Method = cast(Method, prepared_namespace["method"])
+    assert prepared_method.__name__ == ("wrapped" if wrapper_enabled else "method")
+    assert Example.__dict__["method"] is prepared_namespace["method"]
+    assert Example().method() == "result"
+    assert wrapper_calls == (["method"] if wrapper_enabled else [])
 
 
 def test_print_call_preserves_metadata_signature_result_and_output(

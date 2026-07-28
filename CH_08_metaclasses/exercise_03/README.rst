@@ -23,8 +23,10 @@ descriptor types, so their binding behavior remains intact.
 Inherited methods, data attributes, properties and other descriptors, and
 dunder methods remain untouched. Omitting ``wrapper`` or passing ``None``
 leaves the namespace methods unchanged. ``WrappingMeta`` consumes ``wrapper``
-cooperatively in both metaclass construction stages and forwards unrelated
-class keywords.
+cooperatively in ``__prepare__``, ``__new__``, and ``__init__`` while
+forwarding unrelated class keywords at every stage. It wraps methods in place
+and forwards the same mutable prepared namespace object and type through the
+cooperative metaclass lifecycle.
 
 ``print_call`` is a generic example decorator. It preserves the wrapped
 callable's metadata and signature, prints ``calling <name>``, and returns the

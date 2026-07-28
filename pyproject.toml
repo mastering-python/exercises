@@ -55,9 +55,11 @@ default-groups = ["dev"]
 target-version = "py310"
 line-length = 88
 force-exclude = true
+include = ["CH_*/**/*.py"]
 extend-exclude = [
     "**/fixtures/**",
     "**/multiprocessing_solution_00.py",
+    "**/solution_0[1-9].py",
     "**/solution_[1-9][0-9].py",
     "**/threading_solution_00.py",
 ]
@@ -75,7 +77,7 @@ addopts = [
     "--strict-markers",
     "--timeout=30",
 ]
-python_files = ["test_solution_00.py"]
+python_files = ["test_solution_00.py", "test_native_build.py"]
 norecursedirs = ["fixtures"]
 markers = [
     "integration: focused subprocess, notebook, plugin, or build integration",
@@ -91,7 +93,7 @@ warn_unused_configs = true
 exclude = [
     "(^|/)fixtures/",
     "(^|/)multiprocessing_solution_00\\.py$",
-    "(^|/)solution_[1-9][0-9]\\.py$",
+    "(^|/)solution_(0[1-9]|[1-9][0-9])\\.py$",
     "(^|/)threading_solution_00\\.py$",
 ]
 
@@ -129,6 +131,7 @@ project-includes = ["CH_*/**/*.py"]
 project-excludes = [
     "**/fixtures/**",
     "**/multiprocessing_solution_00.py",
+    "**/solution_0[1-9].py",
     "**/solution_[1-9][0-9].py",
     "**/threading_solution_00.py",
 ]

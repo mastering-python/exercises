@@ -4,7 +4,7 @@ Borg state per subclass
 Question
 --------
 
-Create a Borg pattern that has a state per subclass.
+Create a Borg pattern that has state per subclass.
 
 Answer
 ------

@@ -134,6 +134,20 @@ def test_subclass_init_assignments_update_shared_state() -> None:
     assert second.value == 2
 
 
+def test_keyword_only_subclass_init_arguments_share_assigned_state() -> None:
+    class RegionalConfiguration(Borg):
+        region: str
+
+        def __init__(self, *, region: str) -> None:
+            self.region = region
+
+    first: RegionalConfiguration = RegionalConfiguration(region="west")
+    second: RegionalConfiguration = RegionalConfiguration(region="east")
+
+    assert first.region == "east"
+    assert second.region == "east"
+
+
 def test_instantiation_does_not_reset_existing_state() -> None:
     class Persistent(Borg):
         marker: str

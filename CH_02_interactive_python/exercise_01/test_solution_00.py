@@ -292,6 +292,57 @@ def test_complete_does_not_inspect_hostile_instances_from_safe_containers() -> N
         assert match is None
 
 
+def test_complete_does_not_invoke_instance_getattribute() -> None:
+    calls: list[str] = []
+
+    class Evil:
+        def __init__(self) -> None:
+            self.values: dict[str, int] = {"secret": 1}
+
+        def __getattribute__(self, name: str) -> object:
+            calls.append(name)
+            return object.__getattribute__(self, name)
+
+    evil: Evil = Evil()
+    completer: Completer = Completer({"obj": evil})
+
+    match: str | None = completer.complete("obj.values[", 0)
+
+    assert calls == []
+    assert match is None
+
+
+def test_complete_does_not_invoke_container_value_getattribute() -> None:
+    calls: list[str] = []
+
+    class Evil:
+        def __init__(self) -> None:
+            self.values: dict[str, int] = {"secret": 1}
+
+        def __getattribute__(self, name: str) -> object:
+            calls.append(name)
+            return object.__getattribute__(self, name)
+
+    evil: Evil = Evil()
+    namespace: dict[str, object] = {
+        "objects": {"evil": evil},
+        "items": [evil],
+        "pair": (evil,),
+    }
+    completer: Completer = Completer(namespace)
+
+    expression: str
+    for expression in (
+        "objects['evil'].values[",
+        "items[0].values[",
+        "pair[0].values[",
+    ):
+        match: str | None = completer.complete(expression, 0)
+
+        assert calls == []
+        assert match is None
+
+
 def test_name_completion_does_not_inspect_callable_objects() -> None:
     calls: list[str] = []
 

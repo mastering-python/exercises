@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import ast
 import builtins
-import inspect
 import keyword
 import math
 import rlcompleter
 import sys
 from collections.abc import Iterator, Mapping, Sequence
+from types import SimpleNamespace
 from typing import Final, cast
 
 MAX_MATCHES: Final[int] = 25
@@ -74,15 +74,21 @@ class Completer(rlcompleter.Completer):
             owner: object = self._resolve_node(node.value)
             if owner is _UNRESOLVED:
                 return _UNRESOLVED
-            owner_type: type[object] = type(owner)
-            if isinstance(owner, type) or type(owner_type) is not type:
+            if type(owner) is not SimpleNamespace:
                 return _UNRESOLVED
-            try:
-                attribute: object = inspect.getattr_static(owner, node.attr)
-            except AttributeError:
+            attributes: object = object.__getattribute__(owner, "__dict__")
+            if type(attributes) is not dict:
                 return _UNRESOLVED
-            if _is_safe_container(attribute):
-                return attribute
+            attribute_mapping: dict[object, object] = cast(
+                dict[object, object], attributes
+            )
+            for candidate, attribute in attribute_mapping.items():
+                if (
+                    type(candidate) is str
+                    and candidate == node.attr
+                    and _is_safe_container(attribute)
+                ):
+                    return attribute
             return _UNRESOLVED
 
         if isinstance(node, ast.Subscript):
@@ -124,7 +130,7 @@ class Completer(rlcompleter.Completer):
         if not prefix:
             return True
         if prefix[0] in {"'", '"'}:
-            return isinstance(key, str) and key.startswith(prefix[1:])
+            return type(key) is str and key.startswith(prefix[1:])
         return repr(key).startswith(prefix)
 
     def item_matches(self, text: str) -> Iterator[str]:

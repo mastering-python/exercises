@@ -15,10 +15,12 @@ shallow-copied once, and both completion paths use that snapshot. Name
 completion includes Python hard keywords and built-ins without inspecting
 namespace values.
 
-Expressions are parsed with ``ast``. Only names, attributes, and subscripts
-whose keys are literals are resolved. Calls and all other expression forms are
-rejected, so completion never evaluates arbitrary Python code. Importing the
-module does not register a ``readline`` completer or mutate terminal state.
+Expressions are parsed with ``ast``. Only names, exact ``SimpleNamespace``
+attributes containing safe containers, and exact built-in container subscripts
+whose keys are safe literals are resolved. Calls and all other expression
+forms are rejected, so completion never evaluates arbitrary Python code.
+Importing the module does not register a ``readline`` completer or mutate
+terminal state.
 
 Dependencies
 ------------

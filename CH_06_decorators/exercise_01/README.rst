@@ -16,9 +16,10 @@ produces a frozen ``Timing`` value containing its label, elapsed seconds, and
 failure state.
 
 The clock and reporter are injectable. A deterministic clock makes elapsed
-time straightforward to test, while a custom reporter can store or publish
-timings without changing the decorator. The default clock is
-``time.perf_counter`` and the default reporter prints the result.
+time straightforward to test without sleeping, while a custom reporter can
+store or publish timings without changing the decorator. The default clock is
+the monotonic ``time.perf_counter``, so wall-clock adjustments do not distort
+elapsed time. The default reporter prints the result.
 
 The starting clock is read before the target runs. If that read fails, the
 target does not run and the clock exception propagates. After a successful
@@ -43,7 +44,7 @@ Run the focused tests:
 
 .. code-block:: console
 
-   uv run pytest CH_06_decorators/exercise_01/test_solution_00.py
+   uv run pytest CH_06_decorators/exercise_01 -v
 
 Reference
 ---------

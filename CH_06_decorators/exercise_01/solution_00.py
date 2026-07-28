@@ -25,6 +25,37 @@ def print_timing(timing: Timing) -> None:
     print(f"{timing.label} {status} in {timing.elapsed:.6f}s")
 
 
+def _decorate(
+    function: Callable[P, R],
+    *,
+    label: str | None,
+    clock: Callable[[], float],
+    reporter: Callable[[Timing], None],
+) -> Callable[P, R]:
+    timing_label: str = function.__name__ if label is None else label
+
+    def report(started_at: float, *, failed: bool) -> None:
+        elapsed: float = clock() - started_at
+        reporter(Timing(label=timing_label, elapsed=elapsed, failed=failed))
+
+    @wraps(function)
+    def tracked(*args: P.args, **kwargs: P.kwargs) -> R:
+        started_at: float = clock()
+        try:
+            result: R = function(*args, **kwargs)
+        except BaseException:
+            try:
+                report(started_at, failed=True)
+            except BaseException:
+                pass
+            raise
+
+        report(started_at, failed=False)
+        return result
+
+    return tracked
+
+
 @overload
 def track(
     function: Callable[P, R],
@@ -55,33 +86,23 @@ def track(
 ) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorate a function and report each call's duration and outcome."""
 
+    if function is not None:
+        return _decorate(
+            function,
+            label=label,
+            clock=clock,
+            reporter=reporter,
+        )
+
     def decorate(target: Callable[P, R]) -> Callable[P, R]:
-        timing_label: str = target.__name__ if label is None else label
+        return _decorate(
+            target,
+            label=label,
+            clock=clock,
+            reporter=reporter,
+        )
 
-        def report(started_at: float, *, failed: bool) -> None:
-            elapsed: float = clock() - started_at
-            reporter(Timing(label=timing_label, elapsed=elapsed, failed=failed))
-
-        @wraps(target)
-        def tracked(*args: P.args, **kwargs: P.kwargs) -> R:
-            started_at: float = clock()
-            try:
-                result: R = target(*args, **kwargs)
-            except BaseException:
-                try:
-                    report(started_at, failed=True)
-                except BaseException:
-                    pass
-                raise
-
-            report(started_at, failed=False)
-            return result
-
-        return tracked
-
-    if function is None:
-        return decorate
-    return decorate(function)
+    return decorate
 
 
 if __name__ == "__main__":

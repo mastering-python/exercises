@@ -26,6 +26,18 @@ function. Without ``key``, values themselves provide the ordering. Public
 operations are ``add``, ``insert``, ``len``, iteration, membership, ``repr``,
 and ``tree_height``.
 
+Values returned by ``key`` must form a strict weak ordering under ``<``. In
+particular, the ordering must be irreflexive and transitive, and
+incomparability must be transitive. Incomparable values such as floating-point
+NaN do not satisfy this contract, so the collection does not promise correct
+ordering for them.
+
+Membership applies the configured ``key`` function to its candidate. The
+candidate must therefore be accepted by that function, and its result must be
+comparable with the stored sort keys. A foreign candidate may raise the
+original key-function or comparison error; ``SortedList`` intentionally does
+not hide it.
+
 The book's bisect discussion is available in the immutable upstream reference:
 https://github.com/mastering-python/code_2/blob/a012f6ce3f5bf11f5bf380d1c4e7f743355adb89/CH_04_design_patterns/T_10_bisect.rst
 

@@ -3,7 +3,7 @@
 from collections.abc import Callable, Collection, Iterable, Iterator
 from dataclasses import dataclass, field
 from reprlib import recursive_repr
-from typing import Any, Generic, Protocol, TypeVar, cast
+from typing import Any, Generic, Protocol, TypeVar, cast, overload
 
 T = TypeVar("T")
 
@@ -15,6 +15,9 @@ class _Comparable(Protocol):
 
 
 S = TypeVar("S", bound=_Comparable)
+_C = TypeVar("_C", bound=_Comparable)
+_V = TypeVar("_V")
+_K = TypeVar("_K", bound=_Comparable)
 
 
 def _identity(value: T) -> T:
@@ -34,19 +37,69 @@ class _Node(Generic[T, S]):
 class SortedList(Collection[T], Generic[T, S]):
     """Store values in sort-key order in an AVL multiset."""
 
+    @overload
+    def __new__(
+        cls,
+        values: Iterable[_C] = (),
+        *,
+        key: None = None,
+    ) -> "SortedList[_C, _C]": ...
+
+    @overload
+    def __new__(
+        cls,
+        values: Iterable[_V] = (),
+        *,
+        key: Callable[[_V], _K],
+    ) -> "SortedList[_V, _K]": ...
+
+    def __new__(
+        cls,
+        values: Iterable[Any] = (),
+        *,
+        key: Callable[[Any], _Comparable] | None = None,
+    ) -> "SortedList[Any, Any]":
+        del values, key
+        return super().__new__(cls)
+
+    @overload
+    def __init__(
+        self,
+        values: tuple[()] = (),
+        *,
+        key: None = None,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        # Mypy uses generic self here; Pyright uses the __new__ result above.
+        self: "SortedList[_C, _C]",  # pyright: ignore[reportInvalidTypeVarUse]
+        values: Iterable[_C],
+        *,
+        key: None = None,
+    ) -> None: ...
+
+    @overload
     def __init__(
         self,
         values: Iterable[T] = (),
         *,
-        key: Callable[[T], S] | None = None,
+        key: Callable[[T], S],
+    ) -> None: ...
+
+    def __init__(
+        self,
+        values: Iterable[Any] = (),
+        *,
+        key: Callable[[Any], _Comparable] | None = None,
     ) -> None:
         self._root: _Node[T, S] | None = None
-        self._key: Callable[[T], S] = (
-            cast(Callable[[T], S], _identity) if key is None else key
+        self._key: Callable[[T], S] = cast(
+            Callable[[T], S], _identity if key is None else key
         )
         self._size: int = 0
         for value in values:
-            self.add(value)
+            self.add(cast(T, value))
 
     @staticmethod
     def _height(node: _Node[T, S] | None) -> int:

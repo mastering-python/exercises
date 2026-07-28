@@ -1,9 +1,23 @@
 from collections.abc import Collection, Iterator
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import pytest
 
 from .solution_00 import SortedList
+
+if TYPE_CHECKING:
+    _naturally_typed_values = SortedList([3, 1, 2])
+    _keyed_values = SortedList(["bbb", "a"], key=len)
+
+    def _require_natural_type(value: SortedList[int, int]) -> None:
+        pass
+
+    def _require_keyed_type(value: SortedList[str, int]) -> None:
+        pass
+
+    _require_natural_type(_naturally_typed_values)
+    _require_keyed_type(_keyed_values)
 
 
 def test_empty_collection() -> None:

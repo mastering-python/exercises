@@ -30,7 +30,9 @@ The descriptor rejects access before ``__set_name__`` and rejects binding one
 descriptor to two different names.  Instances without a ``__dict__`` are not
 supported and raise a clear ``TypeError``.  Standard callable metadata is
 retained when present and well formed, including ``__type_params__`` on newer
-Python versions.  Arbitrary callable attributes are not copied, so they cannot
+Python versions.  Every declared metadata attribute has a neutral, type-valid
+fallback.  Non-private custom attributes are copied only from an ordinary
+``dict``; private, reserved, malformed, and hostile mapping metadata cannot
 replace descriptor state or helpers.  Partials and slotted callable objects
 remain valid inputs.
 

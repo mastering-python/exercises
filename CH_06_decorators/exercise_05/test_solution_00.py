@@ -202,7 +202,7 @@ def test_malformed_type_parameters_are_ignored() -> None:
     function: Callable[[object], int] = MalformedTypeParameters()
     descriptor: CachedProperty[object, int] = CachedProperty(function)
 
-    assert "__type_params__" not in vars(descriptor)
+    assert descriptor.__type_params__ == ()
 
 
 def test_malformed_standard_metadata_is_ignored() -> None:
@@ -227,16 +227,14 @@ def test_malformed_standard_metadata_is_ignored() -> None:
     descriptor: CachedProperty[object, int] = CachedProperty(function)
     copied: dict[str, object] = vars(descriptor)
 
-    for attribute in (
-        "__module__",
-        "__name__",
-        "__qualname__",
-        "__doc__",
-        "__annotations__",
-        "__type_params__",
-    ):
-        assert attribute not in copied
-
+    assert isinstance(copied["__module__"], str)
+    assert isinstance(copied["__name__"], str)
+    assert isinstance(copied["__qualname__"], str)
+    assert copied["__doc__"] is None
+    assert copied["__annotations__"] == {}
+    assert copied["__type_params__"] == ()
+    assert descriptor.__annotations__ == {}
+    assert "function" not in descriptor.__annotations__
     assert descriptor.__wrapped__ is function
 
 
@@ -253,6 +251,12 @@ def test_partial_is_a_supported_callable() -> None:
     example: Example = Example()
 
     assert descriptor.__get__(example, Example) == "partial:Example"
+    assert isinstance(descriptor.__module__, str)
+    assert isinstance(descriptor.__name__, str)
+    assert isinstance(descriptor.__qualname__, str)
+    assert descriptor.__doc__ is None or isinstance(descriptor.__doc__, str)
+    assert descriptor.__annotations__ == {}
+    assert descriptor.__type_params__ == ()
 
 
 def test_slotted_callable_is_supported() -> None:
@@ -271,6 +275,40 @@ def test_slotted_callable_is_supported() -> None:
     example: Example = Example()
 
     assert descriptor.__get__(example, Example) == "Example"
+    assert isinstance(descriptor.__module__, str)
+    assert isinstance(descriptor.__name__, str)
+    assert isinstance(descriptor.__qualname__, str)
+    assert descriptor.__doc__ is None or isinstance(descriptor.__doc__, str)
+    assert descriptor.__annotations__ == {}
+    assert descriptor.__type_params__ == ()
+
+
+def test_hostile_callable_dict_is_not_iterated() -> None:
+    class HostileDict(dict[str, object]):
+        def __iter__(self) -> NoReturn:
+            raise RuntimeError("do not iterate")
+
+        def items(self) -> NoReturn:
+            raise RuntimeError("do not inspect items")
+
+    class Example:
+        pass
+
+    class Render:
+        def __call__(self, instance: Example) -> str:
+            return type(instance).__name__
+
+        def __getattribute__(self, attribute: str) -> object:
+            if attribute == "__dict__":
+                return HostileDict({"category": "unsafe"})
+            return object.__getattribute__(self, attribute)
+
+    function: Callable[[Example], str] = Render()
+    descriptor: CachedProperty[Example, str] = CachedProperty(function)
+    descriptor.__set_name__(Example, "rendered")
+
+    assert descriptor.__get__(Example(), Example) == "Example"
+    assert "category" not in vars(descriptor)
 
 
 def test_callable_attributes_cannot_shadow_descriptor_internals() -> None:
@@ -285,6 +323,7 @@ def test_callable_attributes_cannot_shadow_descriptor_internals() -> None:
     attributes["_instance_storage"] = "shadowed"
     attributes["function"] = "shadowed"
     attributes["name"] = "shadowed"
+    attributes["category"] = "preserved"
 
     descriptor: CachedProperty[Example, str] = CachedProperty(original)
 
@@ -292,6 +331,7 @@ def test_callable_attributes_cannot_shadow_descriptor_internals() -> None:
     assert descriptor.name is None
     assert "_bound_name" not in vars(descriptor)
     assert "_instance_storage" not in vars(descriptor)
+    assert descriptor.category == "preserved"  # type: ignore[attr-defined]
 
     descriptor.__set_name__(Example, "rendered")
 

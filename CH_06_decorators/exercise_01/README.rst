@@ -9,19 +9,23 @@ Question
 Solution
 --------
 
-``track`` supports both ``@track`` and a configured
-``@track(label=..., clock=..., reporter=...)`` form. Each call produces a
-frozen ``Timing`` value containing its label, elapsed seconds, and failure
-state.
+``track`` supports ``@track``, a configured
+``@track(label=..., clock=..., reporter=...)`` form, and a configured direct
+call such as ``track(function, label=..., clock=..., reporter=...)``. Each call
+produces a frozen ``Timing`` value containing its label, elapsed seconds, and
+failure state.
 
 The clock and reporter are injectable. A deterministic clock makes elapsed
 time straightforward to test, while a custom reporter can store or publish
 timings without changing the decorator. The default clock is
 ``time.perf_counter`` and the default reporter prints the result.
 
-Timing is recorded in a ``finally`` block. Successful calls report
-``failed=False``; calls that raise report ``failed=True`` before the original
-exception continues to the caller.
+The starting clock is read before the target runs. If that read fails, the
+target does not run and the clock exception propagates. After a successful
+target call, ending-clock and reporter failures propagate. If the target
+raises, timing is still attempted with ``failed=True``; an ending-clock or
+reporter failure is suppressed so the original target exception remains the
+one propagated to the caller.
 
 Dependencies
 ------------

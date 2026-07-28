@@ -36,6 +36,111 @@ def test_track_reports_failure_and_propagates_original_exception() -> None:
     assert reports == [Timing(label="explosion", elapsed=1.5, failed=True)]
 
 
+def test_reporter_failure_cannot_mask_target_exception() -> None:
+    readings: Iterator[float] = iter((3.0, 4.5))
+    reports: list[Timing] = []
+    target_error: RuntimeError = RuntimeError("target failed")
+    reporter_error: ValueError = ValueError("reporter failed")
+
+    def failing_reporter(timing: Timing) -> None:
+        reports.append(timing)
+        raise reporter_error
+
+    @track(
+        label="explosion",
+        clock=readings.__next__,
+        reporter=failing_reporter,
+    )
+    def explode() -> None:
+        raise target_error
+
+    with pytest.raises(RuntimeError) as caught:
+        explode()
+
+    assert caught.value is target_error
+    assert reports == [Timing(label="explosion", elapsed=1.5, failed=True)]
+
+
+def test_ending_clock_failure_cannot_mask_target_exception() -> None:
+    clock_calls: list[int] = []
+    reports: list[Timing] = []
+    target_error: RuntimeError = RuntimeError("target failed")
+    clock_error: ValueError = ValueError("clock failed")
+
+    def failing_ending_clock() -> float:
+        clock_calls.append(len(clock_calls) + 1)
+        if len(clock_calls) == 1:
+            return 3.0
+        raise clock_error
+
+    @track(clock=failing_ending_clock, reporter=reports.append)
+    def explode() -> None:
+        raise target_error
+
+    with pytest.raises(RuntimeError) as caught:
+        explode()
+
+    assert caught.value is target_error
+    assert clock_calls == [1, 2]
+    assert reports == []
+
+
+def test_starting_clock_failure_prevents_target_execution() -> None:
+    target_calls: list[None] = []
+    clock_error: ValueError = ValueError("clock failed")
+
+    def failing_starting_clock() -> float:
+        raise clock_error
+
+    @track(clock=failing_starting_clock)
+    def target() -> None:
+        target_calls.append(None)
+
+    with pytest.raises(ValueError) as caught:
+        target()
+
+    assert caught.value is clock_error
+    assert target_calls == []
+
+
+def test_reporter_failure_after_success_propagates() -> None:
+    readings: Iterator[float] = iter((3.0, 4.5))
+    reporter_error: ValueError = ValueError("reporter failed")
+
+    def failing_reporter(timing: Timing) -> None:
+        raise reporter_error
+
+    @track(clock=readings.__next__, reporter=failing_reporter)
+    def target() -> str:
+        return "result"
+
+    with pytest.raises(ValueError) as caught:
+        target()
+
+    assert caught.value is reporter_error
+
+
+def test_ending_clock_failure_after_success_propagates() -> None:
+    clock_calls: list[int] = []
+    clock_error: ValueError = ValueError("clock failed")
+
+    def failing_ending_clock() -> float:
+        clock_calls.append(len(clock_calls) + 1)
+        if len(clock_calls) == 1:
+            return 3.0
+        raise clock_error
+
+    @track(clock=failing_ending_clock)
+    def target() -> str:
+        return "result"
+
+    with pytest.raises(ValueError) as caught:
+        target()
+
+    assert caught.value is clock_error
+    assert clock_calls == [1, 2]
+
+
 def test_track_can_be_used_directly(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -49,6 +154,24 @@ def test_track_can_be_used_directly(
     assert result == 42
     assert output.startswith("answer completed in ")
     assert output.endswith("s\n")
+
+
+def test_track_accepts_direct_call_with_configuration() -> None:
+    readings: Iterator[float] = iter((10.0, 10.25))
+    reports: list[Timing] = []
+
+    def add(left: int, right: int) -> int:
+        return left + right
+
+    tracked_add: Callable[[int, int], int] = track(
+        add,
+        label="addition",
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+
+    assert tracked_add(2, 3) == 5
+    assert reports == [Timing(label="addition", elapsed=0.25, failed=False)]
 
 
 def test_track_uses_function_name_as_default_label() -> None:

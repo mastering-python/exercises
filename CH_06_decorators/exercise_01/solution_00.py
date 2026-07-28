@@ -26,7 +26,14 @@ def print_timing(timing: Timing) -> None:
 
 
 @overload
-def track(function: Callable[P, R], /) -> Callable[P, R]: ...
+def track(
+    function: Callable[P, R],
+    /,
+    *,
+    label: str | None = None,
+    clock: Callable[[], float] = perf_counter,
+    reporter: Callable[[Timing], None] = print_timing,
+) -> Callable[P, R]: ...
 
 
 @overload
@@ -51,18 +58,24 @@ def track(
     def decorate(target: Callable[P, R]) -> Callable[P, R]:
         timing_label: str = target.__name__ if label is None else label
 
+        def report(started_at: float, *, failed: bool) -> None:
+            elapsed: float = clock() - started_at
+            reporter(Timing(label=timing_label, elapsed=elapsed, failed=failed))
+
         @wraps(target)
         def tracked(*args: P.args, **kwargs: P.kwargs) -> R:
             started_at: float = clock()
-            failed: bool = False
             try:
-                return target(*args, **kwargs)
+                result: R = target(*args, **kwargs)
             except BaseException:
-                failed = True
+                try:
+                    report(started_at, failed=True)
+                except BaseException:
+                    pass
                 raise
-            finally:
-                elapsed: float = clock() - started_at
-                reporter(Timing(label=timing_label, elapsed=elapsed, failed=failed))
+
+            report(started_at, failed=False)
+            return result
 
         return tracked
 

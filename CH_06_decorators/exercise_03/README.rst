@@ -4,6 +4,10 @@ Exercise 3: memoizing container arguments
 Question
 --------
 
+The relevant chapter exercise-list excerpt is:
+
+1. Extend the `track` function to monitor execution time.
+2. Extend the `track` function with min/max/average execution time and call count.
 3. Modify the memoization function to function with unhashable types.
 
 Solution

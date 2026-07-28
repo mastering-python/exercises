@@ -28,20 +28,29 @@ given order and cannot be combined with either legacy form.
 A call is bound against the base signature and defaults are applied before the
 key is built. The key is the tuple of exact runtime types for selected
 arguments. Registry lookup deliberately performs no subclass or method
-resolution order fallback. An unregistered tuple calls the base function.
+resolution order fallback. Identity-only key components avoid invoking custom
+metaclass hashing or equality. An unregistered tuple calls the base function.
+The selected implementation receives the normalized bound arguments, including
+defaults from the base signature. Its own missing or different defaults cannot
+change the values used by the dispatcher.
 
 ``dispatcher.register(function)`` is a decorator and returns ``function``.
 Registered functions must have exactly the base parameter names and kinds.
 Every selected parameter needs an annotation that ``typing.get_type_hints``
 resolves to a concrete class. Missing annotations, ``typing.Any``, unions,
 parameterized generics, and other non-class annotations are rejected.
-Registering an existing type tuple replaces its implementation.
+Only selected parameter annotations are resolved; annotations on ignored
+parameters and the return value are not evaluated. Registering an existing
+type tuple replaces its implementation.
 
 Configuration rejects false compatibility keywords, conflicting selection
 styles, empty or duplicate selections, duplicate exclusions, and unknown
-parameter names. Normal signature-binding errors propagate unchanged.
-``functools.wraps`` preserves base metadata, ``__wrapped__``, and the
-inspectable signature.
+parameter names. Legacy exclusions must leave at least one selected parameter.
+Selected variadic positional and keyword parameters are rejected because their
+runtime tuple or dictionary does not describe one dispatched argument; they
+remain usable when excluded through a legacy form. Normal signature-binding
+errors propagate unchanged. ``functools.wraps`` preserves base metadata,
+``__wrapped__``, and the inspectable signature.
 
 Running
 -------

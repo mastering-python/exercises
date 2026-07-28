@@ -18,8 +18,8 @@ from typing import (
 __all__: list[str] = ["Dispatcher", "fancysingledispatch"]
 
 P = ParamSpec("P")
+Q = ParamSpec("Q")
 R = TypeVar("R")
-F = TypeVar("F", bound=Callable[..., object])
 
 
 class Dispatcher(Protocol[P, R]):
@@ -31,7 +31,28 @@ class Dispatcher(Protocol[P, R]):
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R: ...
 
-    def register(self, function: F, /) -> F: ...
+    def register(
+        self,
+        function: Callable[Q, R],
+        /,
+    ) -> Callable[Q, R]: ...
+
+
+class _TypeIdentity:
+    """Hash and compare a class by identity without invoking its metaclass."""
+
+    __slots__: tuple[str, ...] = ("target",)
+
+    target: type[object]
+
+    def __init__(self, target: type[object]) -> None:
+        self.target: type[object] = target
+
+    def __hash__(self) -> int:
+        return id(self.target)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _TypeIdentity) and self.target is other.target
 
 
 def _validated_names(value: object, label: str) -> tuple[str, ...]:
@@ -59,6 +80,45 @@ def _parameter_shape(
     return tuple(
         (name, str(parameter.kind)) for name, parameter in signature.parameters.items()
     )
+
+
+def _resolve_selected_annotations(
+    function: Callable[..., object],
+    signature: inspect.Signature,
+    selected_names: tuple[str, ...],
+) -> dict[str, object]:
+    raw_annotations: dict[str, object] = {}
+    for name in selected_names:
+        annotation: object = signature.parameters[name].annotation
+        if annotation is inspect.Parameter.empty:
+            raise TypeError(
+                f"dispatch parameter {name!r} must have a resolvable "
+                "concrete class annotation; got missing",
+            )
+        raw_annotations[name] = annotation
+
+    def annotation_target() -> None:
+        pass
+
+    annotation_target.__annotations__ = raw_annotations
+    candidate_globals: object = getattr(function, "__globals__", None)
+    global_namespace: dict[str, Any] | None = (
+        cast(dict[str, Any], candidate_globals)
+        if isinstance(candidate_globals, dict)
+        else None
+    )
+    try:
+        return cast(
+            dict[str, object],
+            get_type_hints(
+                annotation_target,
+                globalns=global_namespace,
+            ),
+        )
+    except Exception as error:
+        raise TypeError(
+            f"dispatch parameter annotations could not be resolved: {error}",
+        ) from error
 
 
 def fancysingledispatch(
@@ -128,12 +188,28 @@ def fancysingledispatch(
                     )
             selected_names = dispatch_on
 
+        if not selected_names:
+            raise TypeError("at least one dispatch parameter must remain")
+        for name in selected_names:
+            if base_signature.parameters[name].kind in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                raise TypeError(
+                    f"dispatch parameter {name!r} cannot be variadic",
+                )
+
         base_shape: tuple[tuple[str, str], ...] = _parameter_shape(
             base_signature,
         )
-        registry: dict[tuple[type[object], ...], Callable[..., R]] = {}
+        registry: dict[
+            tuple[_TypeIdentity, ...],
+            Callable[..., R],
+        ] = {}
 
-        def register(function: F) -> F:
+        def register(
+            function: Callable[Q, R],
+        ) -> Callable[Q, R]:
             implementation_signature: inspect.Signature = inspect.signature(
                 function,
             )
@@ -142,14 +218,13 @@ def fancysingledispatch(
                     "registered function parameters must match base names and kinds",
                 )
 
-            try:
-                annotations: dict[str, object] = get_type_hints(function)
-            except (NameError, SyntaxError, TypeError) as error:
-                raise TypeError(
-                    f"dispatch parameter annotations could not be resolved: {error}",
-                ) from error
+            annotations: dict[str, object] = _resolve_selected_annotations(
+                function,
+                implementation_signature,
+                selected_names,
+            )
 
-            key_parts: list[type[object]] = []
+            key_parts: list[_TypeIdentity] = []
             for name in selected_names:
                 annotation: object | None = annotations.get(name)
                 if (
@@ -166,20 +241,21 @@ def fancysingledispatch(
                         "concrete class annotation; "
                         f"got {description}",
                     )
-                key_parts.append(annotation)
+                key_parts.append(_TypeIdentity(annotation))
 
-            registry[tuple(key_parts)] = cast(Callable[..., R], function)
+            registry[tuple(key_parts)] = function
             return function
 
         @wraps(base)
         def dispatcher(*args: P.args, **kwargs: P.kwargs) -> R:
             bound: inspect.BoundArguments = base_signature.bind(*args, **kwargs)
             bound.apply_defaults()
-            key: tuple[type[object], ...] = tuple(
-                type(cast(object, bound.arguments[name])) for name in selected_names
+            key: tuple[_TypeIdentity, ...] = tuple(
+                _TypeIdentity(type(cast(object, bound.arguments[name])))
+                for name in selected_names
             )
             implementation: Callable[..., R] = registry.get(key, base)
-            return implementation(*args, **kwargs)
+            return implementation(*bound.args, **bound.kwargs)
 
         vars(dispatcher)["register"] = register
         return cast(Dispatcher[P, R], dispatcher)

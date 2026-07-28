@@ -34,9 +34,42 @@ class IterationForbidden:
         raise AssertionError("seq was consumed")
 
 
+class TrackedIterable:
+    def __init__(self, values: list[int]) -> None:
+        self._values: list[int] = values
+        self.yielded: list[int] = []
+
+    def __iter__(self) -> Iterator[int]:
+        for value in self._values:
+            self.yielded.append(value)
+            yield value
+
+
 class Parity:
     def __call__(self, value: int) -> str:
         return "even" if value % 2 == 0 else "odd"
+
+
+class CollidingEqualKey:
+    def __init__(self, label: str, group: int) -> None:
+        self.label: str = label
+        self.group: int = group
+
+    def __hash__(self) -> int:
+        return 1
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CollidingEqualKey):
+            return NotImplemented
+        return self.group == other.group
+
+
+class ExplodingEqualityKey:
+    def __hash__(self) -> int:
+        return 1
+
+    def __eq__(self, other: object) -> bool:
+        raise RuntimeError("key equality failed")
 
 
 def run_type_checker(
@@ -93,6 +126,34 @@ def test_groupby_consumes_one_shot_iterable_once() -> None:
         1: [3, 1],
         0: [2, 4],
     }
+
+
+def test_groupby_streams_and_exhausts_generator_expression_once() -> None:
+    events: list[str] = []
+    source: list[int] = [1, 2, 3, 4]
+
+    def transform(value: int) -> int:
+        events.append(f"transform:{value}")
+        return value * 10
+
+    def parity(value: int) -> int:
+        events.append(f"key:{value}")
+        return (value // 10) % 2
+
+    values: Iterator[int] = (transform(value) for value in source)
+
+    assert groupby(parity, values) == {1: [10, 30], 0: [20, 40]}
+    assert events == [
+        "transform:1",
+        "key:10",
+        "transform:2",
+        "key:20",
+        "transform:3",
+        "key:30",
+        "transform:4",
+        "key:40",
+    ]
+    assert list(values) == []
 
 
 def test_groupby_preserves_first_key_and_item_encounter_order() -> None:
@@ -157,6 +218,43 @@ def test_groupby_propagates_unhashable_key_error() -> None:
         groupby(unhashable_key, [1])
 
 
+def test_groupby_merges_equal_colliding_keys_and_retains_first_key_object() -> None:
+    first: CollidingEqualKey = CollidingEqualKey("first", 1)
+    collision: CollidingEqualKey = CollidingEqualKey("collision", 2)
+    equal_later: CollidingEqualKey = CollidingEqualKey("equal later", 1)
+
+    result: dict[CollidingEqualKey, list[CollidingEqualKey]] = groupby(
+        lambda key: key,
+        [first, collision, equal_later],
+    )
+
+    result_keys: list[CollidingEqualKey] = list(result)
+    assert result_keys == [first, collision]
+    assert result_keys[0] is first
+    assert result[first] == [first, equal_later]
+    assert result[collision] == [collision]
+
+
+def test_groupby_propagates_key_equality_error_without_further_consumption() -> None:
+    values: TrackedIterable = TrackedIterable([1, 2, 3])
+    calls: list[int] = []
+    keys: dict[int, ExplodingEqualityKey] = {
+        1: ExplodingEqualityKey(),
+        2: ExplodingEqualityKey(),
+        3: ExplodingEqualityKey(),
+    }
+
+    def broken_key(value: int) -> ExplodingEqualityKey:
+        calls.append(value)
+        return keys[value]
+
+    with pytest.raises(RuntimeError, match=r"^key equality failed$"):
+        groupby(broken_key, values)
+
+    assert values.yielded == [1, 2]
+    assert calls == [1, 2]
+
+
 def test_groupby_does_not_structurally_mutate_input_container() -> None:
     values: list[str] = ["pear", "fig", "plum", "kiwi"]
     original: list[str] = values.copy()
@@ -192,7 +290,7 @@ def test_static_typing_rejects_unhashable_key_function(
     assert "list[int]" in output
 
 
-def test_import_is_quiet_and_demo_is_protected_by_main_guard() -> None:
+def test_import_is_quiet() -> None:
     import_result: subprocess.CompletedProcess[str] = subprocess.run(
         [sys.executable, "-c", f"import {MODULE_NAME}"],
         cwd=REPOSITORY_ROOT,
@@ -204,19 +302,42 @@ def test_import_is_quiet_and_demo_is_protected_by_main_guard() -> None:
     assert import_result.stdout == ""
     assert import_result.stderr == ""
 
+
+def test_module_demo_runs_under_exact_main_guard() -> None:
+    execution_result: subprocess.CompletedProcess[str] = subprocess.run(
+        [sys.executable, "-m", MODULE_NAME],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert execution_result.returncode == 0, execution_result.stderr
+    assert execution_result.stdout == ""
+    assert execution_result.stderr == ""
+
     source_path: Path = Path(solution_00.__file__)
     module: ast.Module = ast.parse(source_path.read_text(encoding="utf-8"))
-    guarded_main_calls: list[ast.Call] = [
-        node
+    exact_main_guards: list[ast.If] = [
+        statement
         for statement in module.body
         if isinstance(statement, ast.If)
         and isinstance(statement.test, ast.Compare)
         and isinstance(statement.test.left, ast.Name)
         and statement.test.left.id == "__name__"
+        and len(statement.test.ops) == 1
+        and isinstance(statement.test.ops[0], ast.Eq)
+        and len(statement.test.comparators) == 1
+        and isinstance(statement.test.comparators[0], ast.Constant)
+        and statement.test.comparators[0].value == "__main__"
+    ]
+    guarded_main_calls: list[ast.Call] = [
+        node
+        for statement in exact_main_guards
         for node in ast.walk(statement)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "main"
     ]
 
+    assert len(exact_main_guards) == 1
     assert guarded_main_calls

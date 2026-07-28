@@ -1,47 +1,26 @@
-"""Find and run the doctests attached to a Python object."""
+"""Public solutions for the Chapter 10 testing and logging exercises."""
 
 from __future__ import annotations
 
 import doctest
-import keyword
-import threading
 
-_RUN_LOCK: threading.RLock = threading.RLock()
+from CH_10_testing_and_logging.exercise_01.doctest_runner import (
+    run_doctests,
+    run_module_doctests,
+)
+from CH_10_testing_and_logging.exercise_01.file_documentation_plugin import (
+    pytest_collect_file,
+)
+from CH_10_testing_and_logging.exercise_01.task_logging import (
+    TaskBatchLoggerAdapter,
+)
 
-
-def run_doctests(
-    target: object,
-    *,
-    optionflags: int = doctest.ELLIPSIS,
-) -> doctest.TestResults:
-    """Run every doctest found recursively in *target*."""
-    finder: doctest.DocTestFinder = doctest.DocTestFinder(recurse=True)
-    runner: doctest.DocTestRunner = doctest.DocTestRunner(
-        verbose=False,
-        optionflags=optionflags,
-    )
-
-    target_name: object = getattr(target, "__name__", None)
-    finder_name: str = type(target).__name__
-    extraglobs: dict[str, object] = {}
-    if (
-        isinstance(target_name, str)
-        and target_name.isidentifier()
-        and not keyword.iskeyword(target_name)
-    ):
-        finder_name = target_name
-        extraglobs[target_name] = target
-
-    with _RUN_LOCK:
-        tests: list[doctest.DocTest] = finder.find(
-            target,
-            name=finder_name,
-            extraglobs=extraglobs,
-        )
-        for test in tests:
-            runner.run(test)
-
-        return runner.summarize(verbose=False)
+__all__: list[str] = [
+    "TaskBatchLoggerAdapter",
+    "pytest_collect_file",
+    "run_doctests",
+    "run_module_doctests",
+]
 
 
 def _double(value: int) -> int:

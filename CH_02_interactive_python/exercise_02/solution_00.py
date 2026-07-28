@@ -16,6 +16,7 @@ from CH_02_interactive_python.exercise_01.solution_00 import Completer
 _CompletionFunction = Callable[[str, int], str | None]
 _DisplayHook = Callable[[str, Sequence[str], int], None]
 _EXPRESSION_CHARACTERS: Final[frozenset[str]] = frozenset(".[]'\"(),+-\\")
+PROMPT: Final[str] = ">>> "
 
 
 class ReadlineLike(Protocol):
@@ -39,7 +40,7 @@ class ReadlineLike(Protocol):
 
     def parse_and_bind(self, binding: str, /) -> None: ...
 
-    def redisplay(self) -> None: ...
+    def get_line_buffer(self) -> str: ...
 
 
 def colorize(match: str, color: str) -> str:
@@ -108,6 +109,7 @@ def _uses_libedit(readline_module: ReadlineLike) -> bool:
 def _display_hook(
     readline_module: ReadlineLike,
     completer: ColorCompleter,
+    prompt: str,
 ) -> _DisplayHook:
     def display_matches(
         substitution: str,
@@ -115,7 +117,8 @@ def _display_hook(
         longest_match_length: int,
     ) -> None:
         completer.display_matches(substitution, matches, longest_match_length)
-        readline_module.redisplay()
+        restored_line: str = f"{prompt}{readline_module.get_line_buffer()}"
+        print(restored_line, end="", flush=True)
 
     return display_matches
 
@@ -123,6 +126,8 @@ def _display_hook(
 def configure_readline(
     readline_module: ReadlineLike,
     completer: ColorCompleter,
+    *,
+    prompt: str,
 ) -> None:
     """Configure safe expression completion for GNU readline or libedit."""
     delimiters: str = _completion_delimiters(readline_module.get_completer_delims())
@@ -131,7 +136,7 @@ def configure_readline(
     uses_libedit: bool = _uses_libedit(readline_module)
     if not uses_libedit:
         readline_module.set_completion_display_matches_hook(
-            _display_hook(readline_module, completer)
+            _display_hook(readline_module, completer, prompt)
         )
     binding: str = "bind ^I rl_complete" if uses_libedit else "tab: complete"
     readline_module.parse_and_bind(binding)
@@ -145,9 +150,9 @@ def main() -> None:
     completer: ColorCompleter = ColorCompleter(
         {"config": {"host": "localhost", "port": 8000}}
     )
-    configure_readline(readline, completer)
+    configure_readline(readline, completer, prompt=PROMPT)
     try:
-        input("Type config[ and press Tab: ")
+        input(PROMPT)
     except EOFError:
         pass
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import subprocess
 import sys
@@ -29,6 +30,7 @@ class FakeReadline:
         delimiters: str,
         library_version: str,
         backend: str | None = None,
+        line_buffer: str = "",
     ) -> None:
         self.backend: str | None = backend
         self._READLINE_LIBRARY_VERSION: str = library_version
@@ -36,7 +38,7 @@ class FakeReadline:
         self.completer: _CompletionFunction | None = None
         self.display_hook: _DisplayHook | None = None
         self.bindings: list[str] = []
-        self.redisplay_calls: int = 0
+        self.line_buffer: str = line_buffer
 
     def get_completer_delims(self) -> str:
         return self._delimiters
@@ -56,8 +58,8 @@ class FakeReadline:
     def parse_and_bind(self, binding: str) -> None:
         self.bindings.append(binding)
 
-    def redisplay(self) -> None:
-        self.redisplay_calls += 1
+    def get_line_buffer(self) -> str:
+        return self.line_buffer
 
 
 def test_colorize_wraps_match_and_resets_style() -> None:
@@ -108,27 +110,26 @@ def test_display_hook_colors_and_resets_each_candidate(
     ]
 
 
-def test_configure_gnu_readline_registers_hook_and_redisplays_buffer(
+def test_configure_gnu_readline_restores_prompt_and_current_buffer(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     readline: FakeReadline = FakeReadline(
         delimiters=" \t.[]'\"(),+-\\:",
         library_version="8.2",
+        line_buffer="config['",
     )
     completer: ColorCompleter = ColorCompleter({"values": [1]})
 
-    solution_00.configure_readline(readline, completer)
+    solution_00.configure_readline(readline, completer, prompt=">>> ")
 
     assert readline.get_completer_delims() == " \t:"
     assert readline.completer == completer.complete
     assert readline.display_hook is not None
     assert readline.bindings == ["tab: complete"]
     readline.display_hook("values[", ["values[0]"], len("values[0]"))
-    assert capsys.readouterr().out.splitlines() == [
-        "",
-        f"{Fore.CYAN}values[0]{Style.RESET_ALL}",
-    ]
-    assert readline.redisplay_calls == 1
+    output: str = capsys.readouterr().out
+    assert output.startswith(f"\n{Fore.CYAN}values[0]{Style.RESET_ALL}\n")
+    assert output.endswith(">>> config['")
 
 
 def test_configure_libedit_uses_plain_safe_fallback() -> None:
@@ -138,12 +139,74 @@ def test_configure_libedit_uses_plain_safe_fallback() -> None:
     )
     completer: ColorCompleter = ColorCompleter({"values": [1]})
 
-    solution_00.configure_readline(readline, completer)
+    solution_00.configure_readline(readline, completer, prompt=">>> ")
 
     assert readline.bindings == ["bind ^I rl_complete"]
     assert readline.display_hook is None
     assert readline.completer is not None
     assert readline.completer("values[", 0) == "values[0]"
+
+
+@pytest.mark.integration
+def test_gnu_readline_pty_restores_prompt_and_plain_buffer() -> None:
+    if (
+        importlib.util.find_spec("gnureadline") is None
+        or importlib.util.find_spec("pexpect") is None
+    ):
+        pytest.skip("requires the optional gnureadline and pexpect packages")
+
+    script: str = r'''
+import io
+import sys
+
+import pexpect
+
+child_code = """
+import sys
+import gnureadline as readline
+sys.modules["readline"] = readline
+from CH_02_interactive_python.exercise_02.solution_00 import (
+    ColorCompleter,
+    PROMPT,
+    configure_readline,
+)
+
+completer = ColorCompleter({"config": {"host": "localhost", "port": 8000}})
+configure_readline(readline, completer, prompt=PROMPT)
+value = input(PROMPT)
+print("FINAL=" + value)
+"""
+transcript_stream = io.StringIO()
+child = pexpect.spawn(
+    sys.executable,
+    ["-c", child_code],
+    encoding="utf-8",
+    timeout=10,
+)
+child.logfile_read = transcript_stream
+child.expect_exact(">>> ")
+child.send("config[\x27")
+child.send("\t\t")
+child.expect_exact("\x1b[36mconfig[\x27host\x27]\x1b[0m")
+child.expect_exact(">>> config[\x27")
+child.send("h\r")
+child.expect_exact("FINAL=config[\x27h")
+child.expect(pexpect.EOF)
+transcript = transcript_stream.getvalue()
+assert ">>> config[\x27h" in transcript
+final_text = transcript.rsplit("FINAL=", 1)[1]
+assert "\x1b[" not in final_text
+print(repr(transcript))
+'''
+    result: subprocess.CompletedProcess[str] = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "FINAL=config['h" in result.stdout
 
 
 def test_color_completer_inherits_safe_expression_rejection() -> None:

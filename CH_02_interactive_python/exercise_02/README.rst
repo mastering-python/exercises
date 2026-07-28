@@ -15,16 +15,18 @@ Exercise 1. Its ``complete`` method returns each inherited candidate unchanged,
 including the ``None`` sentinel, so readline inserts plain valid Python rather
 than ANSI escape bytes. On GNU readline, a registered completion-display hook
 applies the configured Colorama foreground color only while listing choices,
-then redisplays the prompt and current buffer. The default is ``Fore.CYAN``;
-callers can pass another Colorama color with the keyword-only ``color``
-argument. Every colored candidate ends with ``Style.RESET_ALL`` so its color
-does not leak into later terminal output.
+then explicitly writes and flushes the fixed ``>>>`` prompt together with
+readline's current input buffer. Calling ``redisplay()`` alone is insufficient
+because a custom display hook does not receive the prompt. The default color is
+``Fore.CYAN``; callers can pass another Colorama color with the keyword-only
+``color`` argument. Every colored candidate ends with ``Style.RESET_ALL`` so
+its color does not leak into later terminal output.
 
 The guarded demonstration removes expression punctuation from readline's
 completion delimiters so the callback receives complete attribute, bracket,
 quoted-string, signed-number, complex-number, and tuple expressions. It
 always registers the plain replacement callback. GNU readline additionally
-receives the colored display-and-redisplay hook and uses ``tab: complete``.
+receives the prompt-aware colored display hook and uses ``tab: complete``.
 Python 3.10's macOS libedit backend ignores the display-hook API, so the
 configuration safely degrades to libedit's plain candidate display and uses
 ``bind ^I rl_complete``. It never adds ANSI bytes to replacement text to force
@@ -55,6 +57,12 @@ Run the focused tests:
 .. code-block:: console
 
    $ uv run --group interactive pytest CH_02_interactive_python/exercise_02/test_solution_00.py
+
+Run the optional real GNU readline PTY probe:
+
+.. code-block:: console
+
+   $ uv run --python 3.10 --group interactive --with gnureadline --with pexpect pytest CH_02_interactive_python/exercise_02/test_solution_00.py::test_gnu_readline_pty_restores_prompt_and_plain_buffer
 
 Reference
 ---------

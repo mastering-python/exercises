@@ -71,11 +71,14 @@ def _decorate(
 ) -> TrackedCallable[P, R]:
     timing_label: str = resolve_label(function, label)
     stats: TimingStats = TimingStats()
-    wrapper_metadata: tuple[tuple[str, ...], tuple[str, ...]] = select_wrapper_metadata(
-        function
-    )
+    wrapper_metadata: tuple[
+        tuple[str, ...],
+        tuple[str, ...],
+        dict[str, object],
+    ] = select_wrapper_metadata(function)
     wrapper_assignments: tuple[str, ...] = wrapper_metadata[0]
     wrapper_updates: tuple[str, ...] = wrapper_metadata[1]
+    filtered_attributes: dict[str, object] = wrapper_metadata[2]
 
     def finish(started_at: float, *, failed: bool) -> None:
         elapsed: float = clock() - started_at
@@ -101,6 +104,8 @@ def _decorate(
 
         finish(started_at, failed=False)
         return result
+
+    tracked.__dict__.update(filtered_attributes)
 
     def print_stats() -> None:
         print(

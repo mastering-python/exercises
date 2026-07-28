@@ -270,6 +270,7 @@ def test_track_ignores_non_dict_annotations_with_explicit_label() -> None:
     increment: Increment = Increment()
     annotations_attribute: str = "__annotations__"
     setattr(increment, annotations_attribute, 42)
+    increment.__dict__["category"] = "kept"
 
     tracked_increment: Callable[[int], int] = track(
         increment,
@@ -281,6 +282,7 @@ def test_track_ignores_non_dict_annotations_with_explicit_label() -> None:
 
     assert result == 6
     assert reports == [Timing(label="increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "category", None) == "kept"
     assert getattr(tracked_increment, "__wrapped__", None) is increment
     assert signature(tracked_increment) == signature(increment)
 

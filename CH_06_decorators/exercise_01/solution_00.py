@@ -41,8 +41,8 @@ def resolve_label(
 
 def select_wrapper_metadata(
     function: Callable[..., object],
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Return wrapper assignments and updates safe for a function wrapper."""
+) -> tuple[tuple[str, ...], tuple[str, ...], dict[str, object]]:
+    """Return safe wrapper assignments, updates, and filtered attributes."""
 
     def valid_assignment(attribute: str, value: object) -> bool:
         if attribute in {"__module__", "__name__", "__qualname__"}:
@@ -61,6 +61,10 @@ def select_wrapper_metadata(
     if "__type_params__" not in assignment_attributes_list:
         assignment_attributes_list.append("__type_params__")
     assignment_attributes: tuple[str, ...] = tuple(assignment_attributes_list)
+    reserved_attributes: set[str] = {
+        *assignment_attributes,
+        "__wrapped__",
+    }
 
     assigned: list[str] = []
     for attribute in assignment_attributes:
@@ -69,6 +73,7 @@ def select_wrapper_metadata(
             assigned.append(attribute)
 
     updated: list[str] = []
+    filtered_attributes: dict[str, object] = {}
     for attribute in WRAPPER_UPDATES:
         source_updates: object = getattr(function, attribute, None)
         if not isinstance(source_updates, Mapping):
@@ -85,8 +90,13 @@ def select_wrapper_metadata(
         )
         if not has_invalid_metadata:
             updated.append(attribute)
+            continue
 
-    return tuple(assigned), tuple(updated)
+        for key, value in source_mapping.items():
+            if isinstance(key, str) and key not in reserved_attributes:
+                filtered_attributes[key] = value
+
+    return tuple(assigned), tuple(updated), filtered_attributes
 
 
 def _decorate(
@@ -97,11 +107,14 @@ def _decorate(
     reporter: Callable[[Timing], None],
 ) -> Callable[P, R]:
     timing_label: str = resolve_label(function, label)
-    wrapper_metadata: tuple[tuple[str, ...], tuple[str, ...]] = select_wrapper_metadata(
-        function
-    )
+    wrapper_metadata: tuple[
+        tuple[str, ...],
+        tuple[str, ...],
+        dict[str, object],
+    ] = select_wrapper_metadata(function)
     wrapper_assignments: tuple[str, ...] = wrapper_metadata[0]
     wrapper_updates: tuple[str, ...] = wrapper_metadata[1]
+    filtered_attributes: dict[str, object] = wrapper_metadata[2]
 
     def report(started_at: float, *, failed: bool) -> None:
         elapsed: float = clock() - started_at
@@ -122,6 +135,7 @@ def _decorate(
         report(started_at, failed=False)
         return result
 
+    tracked.__dict__.update(filtered_attributes)
     return tracked
 
 

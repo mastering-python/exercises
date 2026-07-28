@@ -253,6 +253,7 @@ def test_malformed_metadata_callable_inherits_safe_wrapping() -> None:
     increment.__dict__["__qualname__"] = 42
     annotations_attribute: str = "__annotations__"
     setattr(increment, annotations_attribute, 42)
+    increment.__dict__["category"] = "kept"
 
     tracked_increment: TrackedCallable[[int], int] = track(
         increment,
@@ -264,6 +265,9 @@ def test_malformed_metadata_callable_inherits_safe_wrapping() -> None:
     assert result == 6
     assert tracked_increment.stats == TimingStats(1, 2.0, 2.0, 2.0)
     assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__qualname__", None) != 42
+    assert getattr(tracked_increment, "__annotations__", None) != 42
+    assert getattr(tracked_increment, "category", None) == "kept"
     assert getattr(tracked_increment, "__wrapped__", None) is increment
     assert signature(tracked_increment) == signature(increment)
 
@@ -289,6 +293,7 @@ def test_malformed_assigned_metadata_is_not_copied(
 
     increment: Increment = Increment()
     increment.__dict__[attribute] = invalid_value
+    increment.__dict__["category"] = "kept"
 
     tracked_increment: TrackedCallable[[int], int] = track(
         increment,
@@ -301,6 +306,7 @@ def test_malformed_assigned_metadata_is_not_copied(
     assert tracked_increment.stats == TimingStats(1, 2.0, 2.0, 2.0)
     assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
     assert getattr(tracked_increment, attribute, None) != invalid_value
+    assert getattr(tracked_increment, "category", None) == "kept"
     assert getattr(tracked_increment, "__wrapped__", None) is increment
     assert signature(tracked_increment) == signature(increment)
 

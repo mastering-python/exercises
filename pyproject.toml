@@ -50,3 +50,70 @@ packaging = [
 [tool.uv]
 package = false
 default-groups = ["dev"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+force-exclude = true
+extend-exclude = [
+    "**/fixtures/**",
+    "**/multiprocessing_solution_00.py",
+    "**/solution_[1-9][0-9].py",
+    "**/threading_solution_00.py",
+]
+
+[tool.ruff.lint]
+select = ["B", "E4", "E7", "E9", "F", "I", "RUF", "UP"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+    "--strict-config",
+    "--strict-markers",
+    "--timeout=30",
+]
+python_files = ["test_solution_00.py"]
+norecursedirs = ["fixtures"]
+markers = [
+    "integration: focused subprocess, notebook, plugin, or build integration",
+    "native: tests requiring a working native compiler",
+    "notebook: tests executing a notebook headlessly",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+show_error_codes = true
+warn_unused_configs = true
+exclude = [
+    "(^|/)fixtures/",
+    "(^|/)multiprocessing_solution_00\\.py$",
+    "(^|/)solution_[1-9][0-9]\\.py$",
+    "(^|/)threading_solution_00\\.py$",
+]
+
+[tool.pyright]
+pythonVersion = "3.10"
+typeCheckingMode = "strict"
+include = ["CH_*"]
+exclude = [
+    "**/fixtures/**",
+    "**/multiprocessing_solution_00.py",
+    "**/solution_[1-9][0-9].py",
+    "**/threading_solution_00.py",
+]
+
+[tool.pyrefly]
+python-version = "3.10"
+project-includes = ["CH_*/**/*.py"]
+project-excludes = [
+    "**/fixtures/**",
+    "**/multiprocessing_solution_00.py",
+    "**/solution_[1-9][0-9].py",
+    "**/threading_solution_00.py",
+]
+check-unannotated-defs = true
+infer-return-types = "never"

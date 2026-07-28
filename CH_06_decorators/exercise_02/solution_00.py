@@ -1,6 +1,6 @@
 """Track call timing and aggregate per-decorator statistics."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import wraps
 from time import perf_counter
@@ -171,7 +171,7 @@ def track(
 
 
 if __name__ == "__main__":
-    readings = iter((10.0, 10.25, 20.0, 21.5))
+    readings: Iterator[float] = iter((10.0, 10.25, 20.0, 21.5))
 
     @track(label="example", clock=readings.__next__)
     def example(value: int) -> int:

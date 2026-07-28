@@ -312,6 +312,37 @@ def test_track_ignores_non_mapping_wrapper_updates() -> None:
     assert signature(tracked_increment) == signature(increment)
 
 
+def test_track_preserves_valid_type_params_metadata() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    type_parameters: tuple[object, ...] = (int,)
+
+    class Increment:
+        __slots__: tuple[str, ...] = ("__type_params__",)
+
+        def __init__(self) -> None:
+            self.__type_params__: tuple[object, ...] = type_parameters
+
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+
+    tracked_increment: Callable[[int], int] = track(
+        increment,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__type_params__", None) == type_parameters
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+    assert signature(tracked_increment) == signature(increment)
+
+
 def test_track_forwards_positional_and_keyword_arguments() -> None:
     readings: Iterator[float] = iter((1.0, 2.0))
     reports: list[Timing] = []

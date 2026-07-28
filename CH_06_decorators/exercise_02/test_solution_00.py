@@ -150,6 +150,9 @@ def test_configured_form_preserves_arguments_result_metadata_and_signature() -> 
         """Return a greeting."""
         return f"Hello, {name}{punctuation}"
 
+    type_parameters: tuple[object, ...] = (str,)
+    greet.__dict__["__type_params__"] = type_parameters
+    greet.__dict__["category"] = "salutation"
     tracked_greet: TrackedCallable[..., str] = track(
         label="greeting",
         clock=readings.__next__,
@@ -158,7 +161,12 @@ def test_configured_form_preserves_arguments_result_metadata_and_signature() -> 
 
     assert tracked_greet("Ada", punctuation="?") == "Hello, Ada?"
     assert getattr(tracked_greet, "__name__", None) == "greet"
+    assert getattr(tracked_greet, "__module__", None) == greet.__module__
+    assert getattr(tracked_greet, "__qualname__", None) == greet.__qualname__
     assert getattr(tracked_greet, "__doc__", None) == "Return a greeting."
+    assert getattr(tracked_greet, "__annotations__", None) == greet.__annotations__
+    assert getattr(tracked_greet, "__type_params__", None) == type_parameters
+    assert getattr(tracked_greet, "category", None) == "salutation"
     assert getattr(tracked_greet, "__wrapped__", None) is greet
     assert signature(tracked_greet) == signature(greet)
 
@@ -256,6 +264,103 @@ def test_malformed_metadata_callable_inherits_safe_wrapping() -> None:
     assert result == 6
     assert tracked_increment.stats == TimingStats(1, 2.0, 2.0, 2.0)
     assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+    assert signature(tracked_increment) == signature(increment)
+
+
+@pytest.mark.parametrize(
+    ("attribute", "invalid_value"),
+    (
+        ("__module__", 42),
+        ("__doc__", 42),
+        ("__type_params__", 42),
+    ),
+)
+def test_malformed_assigned_metadata_is_not_copied(
+    attribute: str,
+    invalid_value: object,
+) -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class Increment:
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+    increment.__dict__[attribute] = invalid_value
+
+    tracked_increment: TrackedCallable[[int], int] = track(
+        increment,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert tracked_increment.stats == TimingStats(1, 2.0, 2.0, 2.0)
+    assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, attribute, None) != invalid_value
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+    assert signature(tracked_increment) == signature(increment)
+
+
+def test_non_mapping_wrapper_updates_are_ignored() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class Increment:
+        def __getattribute__(self, attribute: str) -> object:
+            if attribute == "__dict__":
+                return 42
+            return super().__getattribute__(attribute)
+
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+    tracked_increment: TrackedCallable[[int], int] = track(
+        increment,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert tracked_increment.stats == TimingStats(1, 2.0, 2.0, 2.0)
+    assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__wrapped__", None) is increment
+    assert signature(tracked_increment) == signature(increment)
+
+
+def test_valid_type_params_inherit_shared_wrapping() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    type_parameters: tuple[object, ...] = (int,)
+
+    class Increment:
+        __slots__: tuple[str, ...] = ("__type_params__",)
+
+        def __init__(self) -> None:
+            self.__type_params__: tuple[object, ...] = type_parameters
+
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    increment: Increment = Increment()
+
+    tracked_increment: TrackedCallable[[int], int] = track(
+        increment,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert tracked_increment.stats == TimingStats(1, 2.0, 2.0, 2.0)
+    assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
+    assert getattr(tracked_increment, "__type_params__", None) == type_parameters
     assert getattr(tracked_increment, "__wrapped__", None) is increment
     assert signature(tracked_increment) == signature(increment)
 

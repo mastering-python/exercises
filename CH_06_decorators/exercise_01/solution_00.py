@@ -4,7 +4,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import WRAPPER_ASSIGNMENTS, WRAPPER_UPDATES, wraps
 from time import perf_counter
-from typing import ParamSpec, TypeVar, overload
+from typing import ParamSpec, TypeVar, cast, overload
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -43,33 +43,50 @@ def select_wrapper_metadata(
     function: Callable[..., object],
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Return wrapper assignments and updates safe for a function wrapper."""
-    assigned: list[str] = []
-    assignment_attributes: tuple[str, ...] = tuple(
+
+    def valid_assignment(attribute: str, value: object) -> bool:
+        if attribute in {"__module__", "__name__", "__qualname__"}:
+            return isinstance(value, str)
+        if attribute == "__doc__":
+            return value is None or isinstance(value, str)
+        if attribute == "__annotations__":
+            return isinstance(value, dict)
+        if attribute == "__type_params__":
+            return isinstance(value, tuple)
+        return False
+
+    assignment_attributes_list: list[str] = [
         str(attribute) for attribute in WRAPPER_ASSIGNMENTS
-    )
+    ]
+    if "__type_params__" not in assignment_attributes_list:
+        assignment_attributes_list.append("__type_params__")
+    assignment_attributes: tuple[str, ...] = tuple(assignment_attributes_list)
+
+    assigned: list[str] = []
     for attribute in assignment_attributes:
         value: object = getattr(function, attribute, None)
-        valid_assignment: bool
-        if attribute in {"__module__", "__name__", "__qualname__"}:
-            valid_assignment = isinstance(value, str)
-        elif attribute == "__doc__":
-            valid_assignment = value is None or isinstance(value, str)
-        elif attribute == "__annotations__":
-            valid_assignment = isinstance(value, dict)
-        elif attribute == "__type_params__":
-            valid_assignment = isinstance(value, tuple)
-        else:
-            valid_assignment = False
-
-        if valid_assignment:
+        if valid_assignment(attribute, value):
             assigned.append(attribute)
 
-    updated: tuple[str, ...] = tuple(
-        attribute
-        for attribute in WRAPPER_UPDATES
-        if isinstance(getattr(function, attribute, None), Mapping)
-    )
-    return tuple(assigned), updated
+    updated: list[str] = []
+    for attribute in WRAPPER_UPDATES:
+        source_updates: object = getattr(function, attribute, None)
+        if not isinstance(source_updates, Mapping):
+            continue
+        source_mapping: Mapping[object, object] = cast(
+            Mapping[object, object],
+            source_updates,
+        )
+        has_invalid_metadata: bool = any(
+            isinstance(key, str)
+            and key in assignment_attributes
+            and not valid_assignment(key, value)
+            for key, value in source_mapping.items()
+        )
+        if not has_invalid_metadata:
+            updated.append(attribute)
+
+    return tuple(assigned), tuple(updated)
 
 
 def _decorate(

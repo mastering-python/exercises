@@ -1,7 +1,12 @@
 Exercise 2
 ==========
 
-2. Extend the `track` function with min/max/average execution time and call count.
+Question
+--------
+
+.. code-block:: text
+
+    2. Extend the `track` function with min/max/average execution time and call count.
 
 Solution
 --------

@@ -4,8 +4,7 @@ Sorted list
 Question
 --------
 
-Create a SortedList collection with O(log(n)) inserts which always returns a
-sorted list during iteration.
+Create a SortedList collection that has O(log(n)) inserts and always returns a sorted list during each iteration.
 
 Answer
 ------

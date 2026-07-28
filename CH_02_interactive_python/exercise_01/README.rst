@@ -1,7 +1,7 @@
 Exercise 1 - safe finite-sequence completion
 ============================================
 
-1. `rlcompleter` enhancement created currently only handles dictionaries. Try extend so supports lists, strings, tuples well.
+1. The `rlcompleter` enhancement we created currently only handles dictionaries. Try and extend the code so it supports lists, strings, and tuples as well.
 
 Solution
 --------

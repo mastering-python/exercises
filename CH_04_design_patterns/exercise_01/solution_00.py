@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping
+from reprlib import recursive_repr
 from typing import Any, Protocol, TypeVar, cast
 
 K = TypeVar("K")
@@ -41,6 +42,7 @@ class SortedDict(MutableMapping[K, V]):
     def __len__(self) -> int:
         return len(self._data)
 
+    @recursive_repr(fillvalue="...")
     def __repr__(self) -> str:
         ordered: dict[K, V] = {key: self._data[key] for key in self}
         return f"{type(self).__name__}({ordered!r})"

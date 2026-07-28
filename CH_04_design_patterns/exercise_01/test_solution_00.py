@@ -1,4 +1,4 @@
-from collections.abc import MutableMapping
+from collections.abc import ItemsView, KeysView, MutableMapping, ValuesView
 
 import pytest
 
@@ -41,16 +41,21 @@ def test_mutations_are_sorted_live_by_key_length() -> None:
     mapping: SortedDict[str, int] = SortedDict[str, int](
         {"three": 3, "one": 1}, keyfunc=len
     )
+    keys_view: KeysView[str] = mapping.keys()
+    items_view: ItemsView[str, int] = mapping.items()
+    values_view: ValuesView[int] = mapping.values()
 
     mapping["to"] = 2
     mapping["f"] = 1
 
-    assert list(mapping.items()) == [
+    assert list(keys_view) == ["f", "to", "one", "three"]
+    assert list(items_view) == [
         ("f", 1),
         ("to", 2),
         ("one", 1),
         ("three", 3),
     ]
+    assert list(values_view) == [1, 2, 1, 3]
 
 
 def test_deletion_and_repr_follow_sorted_order() -> None:
@@ -61,6 +66,13 @@ def test_deletion_and_repr_follow_sorted_order() -> None:
     del mapping["to"]
 
     assert repr(mapping) == "SortedDict({'f': 1, 'three': 3})"
+
+
+def test_repr_handles_self_reference() -> None:
+    mapping: SortedDict[str, object] = SortedDict[str, object]()
+    mapping["self"] = mapping
+
+    assert repr(mapping) == "SortedDict({'self': ...})"
 
 
 def test_replacing_value_does_not_duplicate_key() -> None:

@@ -15,6 +15,10 @@ value.  Iteration sorts the current keys, so insertions, replacements, and
 deletions are reflected immediately without maintaining a second index.
 Consequently, each iteration costs O(n log n).
 
+Without a ``keyfunc``, all keys must be mutually orderable. Incompatible key
+types raise ``TypeError`` during iteration; Python's static type system cannot
+fully guarantee that arbitrary keys support a common ordering.
+
 No upstream substrate was needed for this answer.
 
 Dependencies

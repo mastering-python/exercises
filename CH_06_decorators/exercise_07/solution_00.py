@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import inspect
 import types
+from _thread import LockType
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
+from math import isfinite
 from numbers import Real
+from threading import Lock
 from typing import (
     Annotated,
     Any,
@@ -44,14 +47,18 @@ class Constraint(Protocol):
 
 
 def _real_bound(value: object) -> Real:
-    if not isinstance(value, Real):
+    if isinstance(value, bool) or not isinstance(value, Real):
         raise TypeError("constraint bounds must be real numbers")
+    if isinstance(value, float) and not isfinite(value):
+        raise ValueError("constraint bounds must be finite real numbers")
     return value
 
 
 def _real_value(name: str, value: object) -> Real:
-    if not isinstance(value, Real):
+    if isinstance(value, bool) or not isinstance(value, Real):
         raise TypeError(f"{name}={value!r} must be a real number")
+    if isinstance(value, float) and not isfinite(value):
+        raise ValueError(f"{name}={value!r} must be a finite real number")
     return value
 
 
@@ -148,7 +155,9 @@ def _matches_annotation(value: object, annotation: object) -> bool:
     if origin in (Union, types.UnionType):
         return any(_matches_annotation(value, member) for member in arguments)
     if origin is Literal:
-        return value in arguments
+        return any(
+            type(value) is type(literal) and value == literal for literal in arguments
+        )
     if isinstance(origin, type):
         return isinstance(value, origin)
     if isinstance(annotation, type):
@@ -184,6 +193,54 @@ def _check_parameter(
     _check_value(name, value, annotation)
 
 
+def _call_local_namespace(
+    defining_locals: dict[str, Any],
+    bound: inspect.BoundArguments,
+) -> dict[str, Any]:
+    local_namespace: dict[str, Any] = dict(defining_locals)
+    for argument in bound.arguments.values():
+        value: object = cast(object, argument)
+        value_type: type[object]
+        if isinstance(value, type):
+            value_type = cast(type[object], value)
+        else:
+            value_type = type(value)
+        local_namespace[value_type.__name__] = value_type
+    return local_namespace
+
+
+def _resolve_parameter_annotations(
+    function: Callable[..., object],
+    signature: inspect.Signature,
+    local_namespace: dict[str, Any],
+) -> dict[str, Any]:
+    raw_annotations: dict[str, object] = cast(
+        dict[str, object],
+        getattr(function, "__annotations__", {}),
+    )
+    parameter_annotations: dict[str, object] = {
+        name: raw_annotations[name]
+        for name in signature.parameters
+        if name in raw_annotations
+    }
+
+    def annotation_target() -> None:
+        pass
+
+    annotation_target.__annotations__ = parameter_annotations
+    candidate_globals: object = getattr(function, "__globals__", None)
+    global_namespace: dict[str, Any] | None = (
+        cast(dict[str, Any], candidate_globals)
+        if isinstance(candidate_globals, dict)
+        else None
+    )
+    return get_type_hints(
+        annotation_target,
+        globalns=global_namespace,
+        localns=local_namespace,
+    )
+
+
 def type_check(
     **constraints: Constraint,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -193,20 +250,58 @@ def type_check(
 
     def decorate(function: Callable[P, R]) -> Callable[P, R]:
         signature: inspect.Signature = inspect.signature(function)
+        current_frame: types.FrameType | None = inspect.currentframe()
+        try:
+            caller_frame: types.FrameType | None = (
+                current_frame.f_back if current_frame is not None else None
+            )
+            defining_locals: dict[str, Any] = (
+                dict(caller_frame.f_locals) if caller_frame is not None else {}
+            )
+        finally:
+            del current_frame
+
         for name, constraint in configured_constraints.items():
             if name not in signature.parameters:
                 raise TypeError(f"unknown constrained parameter: {name!r}")
+            parameter: inspect.Parameter = signature.parameters[name]
+            if parameter.kind in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                raise TypeError(
+                    f"constraint for variadic parameter {name!r} is not supported",
+                )
             if not callable(getattr(constraint, "validate", None)):
                 raise TypeError(
                     f"constraint for {name!r} must provide validate(name, value)",
                 )
 
-        annotations: dict[str, Any] = get_type_hints(function)
+        annotations_cache: dict[str, Any] | None = None
+        resolution_lock: LockType = Lock()
+
+        def resolve_annotations(
+            bound: inspect.BoundArguments,
+        ) -> dict[str, Any]:
+            nonlocal annotations_cache
+            with resolution_lock:
+                if annotations_cache is None:
+                    resolved: dict[str, Any] = _resolve_parameter_annotations(
+                        function,
+                        signature,
+                        _call_local_namespace(
+                            defining_locals,
+                            bound,
+                        ),
+                    )
+                    annotations_cache = resolved
+                return annotations_cache
 
         @wraps(function)
         def checked(*args: P.args, **kwargs: P.kwargs) -> R:
             bound: inspect.BoundArguments = signature.bind(*args, **kwargs)
             bound.apply_defaults()
+            annotations: dict[str, Any] = resolve_annotations(bound)
 
             for name, value in bound.arguments.items():
                 annotation: object | None = annotations.get(name)

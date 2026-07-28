@@ -5,7 +5,8 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 from dataclasses import FrozenInstanceError
-from typing import cast
+from fractions import Fraction
+from typing import Literal, cast
 
 import pytest
 
@@ -89,7 +90,7 @@ def test_constraint_bounds_must_be_real(
 
 @pytest.mark.parametrize(
     ("lower", "upper"),
-    [(1, 1), (2, 1), (float("nan"), 1)],
+    [(1, 1), (2, 1)],
 )
 def test_between_lower_bound_must_be_less_than_upper_bound(
     lower: float,
@@ -119,6 +120,116 @@ def test_constraints_reject_nonnumeric_values(
         match=r"^count='5' must be a real number$",
     ):
         constraint.validate("count", "5")
+
+
+@pytest.mark.parametrize(
+    "constraint",
+    [GreaterThan(0), LessThan(10), Between(0, 10)],
+    ids=["greater-than", "less-than", "between"],
+)
+def test_constraints_reject_boolean_values(
+    constraint: Constraint,
+) -> None:
+    with pytest.raises(
+        TypeError,
+        match=r"^count=True must be a real number$",
+    ):
+        constraint.validate("count", True)
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: GreaterThan(True),
+        lambda: LessThan(False),
+        lambda: Between(False, 1),
+        lambda: Between(0, True),
+    ],
+)
+def test_constraint_bounds_reject_booleans(
+    factory: Callable[[], object],
+) -> None:
+    with pytest.raises(TypeError, match=r"^constraint bounds must be real numbers$"):
+        factory()
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: GreaterThan(float("nan")),
+        lambda: GreaterThan(float("inf")),
+        lambda: GreaterThan(float("-inf")),
+        lambda: LessThan(float("nan")),
+        lambda: LessThan(float("inf")),
+        lambda: LessThan(float("-inf")),
+        lambda: Between(float("nan"), 1),
+        lambda: Between(float("inf"), 1),
+        lambda: Between(float("-inf"), 1),
+        lambda: Between(0, float("nan")),
+        lambda: Between(0, float("inf")),
+        lambda: Between(0, float("-inf")),
+    ],
+)
+def test_constraint_bounds_must_be_finite(
+    factory: Callable[[], object],
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"^constraint bounds must be finite real numbers$",
+    ):
+        factory()
+
+
+@pytest.mark.parametrize(
+    ("constraint", "value"),
+    [
+        (GreaterThan(0), float("nan")),
+        (GreaterThan(0), float("inf")),
+        (GreaterThan(0), float("-inf")),
+        (LessThan(0), float("nan")),
+        (LessThan(0), float("inf")),
+        (LessThan(0), float("-inf")),
+        (Between(-1, 1), float("nan")),
+        (Between(-1, 1), float("inf")),
+        (Between(-1, 1), float("-inf")),
+    ],
+    ids=[
+        "greater-than-nan",
+        "greater-than-infinity",
+        "greater-than-negative-infinity",
+        "less-than-nan",
+        "less-than-infinity",
+        "less-than-negative-infinity",
+        "between-nan",
+        "between-infinity",
+        "between-negative-infinity",
+    ],
+)
+def test_constraints_reject_nonfinite_values_before_comparison(
+    constraint: Constraint,
+    value: float,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"^count=.* must be a finite real number$",
+    ):
+        constraint.validate("count", value)
+
+
+def test_constraints_preserve_huge_finite_integers() -> None:
+    huge: int = 10**10_000
+
+    GreaterThan(huge - 1).validate("count", huge)
+    LessThan(huge + 1).validate("count", huge)
+    Between(huge - 1, huge + 1).validate("count", huge)
+
+
+def test_constraints_support_finite_fractions() -> None:
+    value: Fraction = Fraction(1, 2)
+
+    GreaterThan(Fraction(1, 3)).validate("ratio", value)
+    LessThan(Fraction(2, 3)).validate("ratio", value)
+    Between(Fraction(1, 3), Fraction(2, 3)).validate("ratio", value)
 
 
 def test_constraint_implementations_are_frozen() -> None:
@@ -260,6 +371,110 @@ def test_return_annotation_is_not_validated() -> None:
     assert result == "not checked"
 
 
+def test_unresolved_return_annotation_is_not_resolved() -> None:
+    @type_check()
+    def identity(value: int) -> object:
+        return value
+
+    original = inspect.unwrap(identity)
+    original.__annotations__["return"] = "MissingReturnValue"
+
+    assert identity(1) == 1
+
+
+def test_literal_integer_rejects_equal_boolean() -> None:
+    @type_check()
+    def identify(value: Literal[1]) -> Literal[1]:
+        return value
+
+    with pytest.raises(
+        TypeError,
+        match=r"^value expected Literal\[1\], got bool$",
+    ):
+        identify(True)  # type: ignore[arg-type]
+
+
+def test_literal_boolean_rejects_equal_integer() -> None:
+    @type_check()
+    def identify(value: Literal[True]) -> Literal[True]:
+        return value
+
+    with pytest.raises(
+        TypeError,
+        match=r"^value expected Literal\[True\], got int$",
+    ):
+        identify(1)  # type: ignore[arg-type]
+
+
+def test_function_local_forward_reference_resolves_on_first_call() -> None:
+    class LocalValue:
+        pass
+
+    @type_check()
+    def identify(value: LocalValue) -> object:
+        return value
+
+    value: LocalValue = LocalValue()
+
+    assert identify(value) is value
+
+
+def test_class_self_forward_reference_resolves_after_class_creation() -> None:
+    class Node:
+        @type_check()
+        def connect(self, other: Node) -> Node:
+            return other
+
+    first: Node = Node()
+    second: Node = Node()
+
+    assert first.connect(second) is second
+
+
+def test_module_forward_reference_resolves_after_definition() -> None:
+    namespace: dict[str, object] = {"type_check": type_check}
+    exec(
+        "from __future__ import annotations\n"
+        "@type_check()\n"
+        "def identify(value: LaterValue) -> object:\n"
+        "    return value\n"
+        "class LaterValue:\n"
+        "    pass\n",
+        namespace,
+    )
+    identify = cast(Callable[[object], object], namespace["identify"])
+    later_value = cast(type[object], namespace["LaterValue"])()
+
+    assert identify(later_value) is later_value
+
+
+def test_unresolved_forward_reference_raises_only_when_called() -> None:
+    @type_check()
+    def identify(value: object) -> object:
+        return value
+
+    original = inspect.unwrap(identify)
+    original.__annotations__["value"] = "MissingValue"
+
+    assert callable(identify)
+
+    with pytest.raises(NameError, match=r"name 'MissingValue' is not defined"):
+        identify(object())
+
+
+def test_resolved_type_hints_are_cached_after_success() -> None:
+    @type_check()
+    def identify(value: int) -> object:
+        return value
+
+    assert identify(1) == 1
+
+    original = inspect.unwrap(identify)
+    original.__annotations__["value"] = "MissingAfterResolution"
+
+    assert identify(2) == 2
+
+
 def test_function_metadata_and_signature_are_preserved() -> None:
     def original(value: int, *, scale: float = 1.0) -> float:
         """Scale a value."""
@@ -289,6 +504,50 @@ def test_signature_binding_errors_propagate() -> None:
 
     with pytest.raises(TypeError, match=r"unexpected keyword argument 'extra'"):
         add(left=1, right=2, extra=3)  # type: ignore[call-arg]
+
+
+def test_constraint_cannot_target_variadic_positional_parameter() -> None:
+    decorator = type_check(values=GreaterThan(0))
+
+    with pytest.raises(
+        TypeError,
+        match=r"^constraint for variadic parameter 'values' is not supported$",
+    ):
+
+        @decorator
+        def collect(*values: object) -> tuple[object, ...]:
+            return values
+
+        assert callable(collect)
+
+
+def test_constraint_cannot_target_variadic_keyword_parameter() -> None:
+    decorator = type_check(options=GreaterThan(0))
+
+    with pytest.raises(
+        TypeError,
+        match=r"^constraint for variadic parameter 'options' is not supported$",
+    ):
+
+        @decorator
+        def collect(**options: object) -> dict[str, object]:
+            return options
+
+        assert callable(collect)
+
+
+def test_unconstrained_variadic_annotations_are_checked_elementwise() -> None:
+    @type_check()
+    def collect(*values: int, **options: int) -> tuple[tuple[int, ...], dict[str, int]]:
+        return values, options
+
+    assert collect(1, 2, enabled=3) == ((1, 2), {"enabled": 3})
+
+    with pytest.raises(TypeError, match=r"^values expected int, got str$"):
+        collect(1, "2")  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match=r"^options expected int, got str$"):
+        collect(enabled="3")  # type: ignore[arg-type]
 
 
 def test_wrapped_function_errors_propagate() -> None:

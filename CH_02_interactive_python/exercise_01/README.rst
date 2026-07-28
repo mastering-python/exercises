@@ -8,10 +8,12 @@ Solution
 
 ``Completer`` extends the standard-library ``rlcompleter.Completer`` with safe
 name and item completion. Exact built-in dictionaries produce recursively safe
-literal keys using ``repr``; exact lists, tuples, and strings produce finite
-integer indices. Prefixes filter candidates, and each request inspects at most
-25 items. An explicitly supplied namespace is shallow-copied once, and both
-completion paths use that snapshot.
+literal keys using ``repr``; non-finite numeric keys are rejected. Exact lists,
+tuples, and strings produce finite integer indices. Prefixes filter candidates,
+and each request inspects at most 25 items. An explicitly supplied namespace is
+shallow-copied once, and both completion paths use that snapshot. Name
+completion includes Python keywords and built-ins without inspecting namespace
+values.
 
 Expressions are parsed with ``ast``. Only names, attributes, and subscripts
 whose keys are literals are resolved. Calls and all other expression forms are

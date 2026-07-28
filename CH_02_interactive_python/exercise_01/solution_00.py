@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ast
+import builtins
 import inspect
+import keyword
+import math
 import rlcompleter
 import sys
 from collections.abc import Iterator, Mapping, Sequence
@@ -11,12 +14,22 @@ from typing import Final, cast
 
 MAX_MATCHES: Final[int] = 25
 _UNRESOLVED: Final[object] = object()
+_KEYWORDS: Final[tuple[str, ...]] = (*keyword.kwlist, *keyword.softkwlist)
+_BUILTINS: Final[tuple[tuple[str, object], ...]] = tuple(
+    (name, value) for name, value in vars(builtins).items() if type(name) is str
+)
 
 
 def _is_safe_literal(value: object) -> bool:
     value_type: type[object] = type(value)
-    if value_type in (str, bytes, int, float, complex, bool, type(None)):
+    if value_type in (str, bytes, int, bool, type(None)):
         return True
+    if value_type is float:
+        float_number: float = cast(float, value)
+        return math.isfinite(float_number)
+    if value_type is complex:
+        complex_number: complex = cast(complex, value)
+        return math.isfinite(complex_number.real) and math.isfinite(complex_number.imag)
     if value_type is tuple:
         items: tuple[object, ...] = cast(tuple[object, ...], value)
         return all(_is_safe_literal(item) for item in items)
@@ -60,6 +73,8 @@ class Completer(rlcompleter.Completer):
         if isinstance(node, ast.Attribute):
             owner: object = self._resolve_node(node.value)
             if owner is _UNRESOLVED:
+                return _UNRESOLVED
+            if isinstance(owner, type):
                 return _UNRESOLVED
             try:
                 attribute: object = inspect.getattr_static(owner, node.attr)
@@ -144,9 +159,29 @@ class Completer(rlcompleter.Completer):
     def _name_matches(self, text: str) -> Iterator[str]:
         if not text.isidentifier():
             return
+        seen: set[str] = set()
+        keyword_name: str
+        for keyword_name in _KEYWORDS:
+            if keyword_name.startswith(text):
+                seen.add(keyword_name)
+                if keyword_name in {"finally", "try"}:
+                    yield f"{keyword_name}:"
+                elif keyword_name in {"False", "None", "True"}:
+                    yield keyword_name
+                else:
+                    yield f"{keyword_name} "
         name: object
         for name in self._active_namespace():
-            if type(name) is str and name.startswith(text):
+            if type(name) is str and name not in seen and name.startswith(text):
+                seen.add(name)
+                yield name
+        value: object
+        for name, value in _BUILTINS:
+            if name in seen or not name.startswith(text):
+                continue
+            if type(value) in (type(len), type):
+                yield f"{name}("
+            else:
                 yield name
 
     def complete(self, text: str, state: int) -> str | None:

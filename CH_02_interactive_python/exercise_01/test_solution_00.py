@@ -5,7 +5,7 @@ import readline
 import rlcompleter
 from collections.abc import Iterator, Mapping
 from types import ModuleType, SimpleNamespace
-from typing import cast
+from typing import ClassVar, cast
 
 import pytest
 
@@ -83,6 +83,23 @@ def test_filters_mapping_keys_by_quoted_and_unquoted_prefixes() -> None:
 
     assert quoted_matches == ["values['alpha']"]
     assert numeric_matches == ["values[10]"]
+
+
+def test_rejects_non_finite_float_and_complex_keys() -> None:
+    values: dict[object, object] = {
+        1.5: "finite float",
+        float("inf"): "positive infinity",
+        float("-inf"): "negative infinity",
+        float("nan"): "not a number",
+        complex(1, 2): "finite complex",
+        complex(float("inf"), 1): "infinite real component",
+        complex(1, float("nan")): "nan imaginary component",
+    }
+    completer: Completer = Completer({"values": values})
+
+    matches: list[str] = list(completer.item_matches("values["))
+
+    assert matches == ["values[1.5]", "values[(1+2j)]"]
 
 
 def test_completes_list_tuple_and_string_indices() -> None:
@@ -197,6 +214,25 @@ def test_complete_does_not_invoke_properties() -> None:
     assert match is None
 
 
+def test_complete_does_not_inspect_class_roots_with_hostile_metaclasses() -> None:
+    calls: list[str] = []
+
+    class HostileMeta(type):
+        def __getattribute__(cls, name: str) -> object:
+            calls.append(name)
+            return super().__getattribute__(name)
+
+    class Evil(metaclass=HostileMeta):
+        values: ClassVar[dict[str, int]] = {"secret": 1}
+
+    completer: Completer = Completer({"Evil": Evil})
+
+    match: str | None = completer.complete("Evil.values[", 0)
+
+    assert calls == []
+    assert match is None
+
+
 def test_name_completion_does_not_inspect_callable_objects() -> None:
     calls: list[str] = []
 
@@ -305,12 +341,28 @@ def test_complete_resets_cached_matches_at_state_zero() -> None:
     assert exhausted is None
 
 
-def test_complete_delegates_normal_name_completion() -> None:
+def test_complete_preserves_explicit_namespace_completion() -> None:
     completer: Completer = Completer({"example_name": 1})
 
     match: str | None = completer.complete("example_n", 0)
 
     assert match == "example_name"
+
+
+def test_complete_preserves_builtin_name_completion() -> None:
+    completer: Completer = Completer({})
+
+    match: str | None = completer.complete("pri", 0)
+
+    assert match == "print("
+
+
+def test_complete_preserves_keyword_completion() -> None:
+    completer: Completer = Completer({})
+
+    match: str | None = completer.complete("for", 0)
+
+    assert match == "for "
 
 
 def test_complete_does_not_delegate_item_text_without_matches(

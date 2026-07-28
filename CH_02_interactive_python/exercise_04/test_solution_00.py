@@ -5,17 +5,22 @@ from __future__ import annotations
 import subprocess
 import sys
 from dataclasses import FrozenInstanceError
-from typing import cast
+from typing import Protocol, cast
 
 import IPython.display
 import ipywidgets as widgets  # type: ignore[import-untyped]
 import pytest
+from traitlets import Bunch
 
 import CH_02_interactive_python.exercise_04.solution_00 as solution_00
 from CH_02_interactive_python.exercise_04.solution_00 import (
     HelloWidget,
     create_hello_widget,
 )
+
+
+class _ChangeNotifier(Protocol):
+    def notify_change(self, change: Bunch, /) -> None: ...
 
 
 def test_initial_name_sets_text_and_greeting() -> None:
@@ -52,6 +57,22 @@ def test_nonempty_name_is_trimmed_in_greeting() -> None:
     hello.name_input.value = "  Grace Hopper\t"
 
     assert hello.greeting.value == "Hello, Grace Hopper!"
+
+
+def test_non_string_observer_value_falls_back_to_world() -> None:
+    hello: HelloWidget = create_hello_widget("Ada")
+    change: Bunch = Bunch(
+        name="value",
+        old="Ada",
+        new=42,
+        owner=hello.name_input,
+        type="change",
+    )
+    notifier: _ChangeNotifier = cast(_ChangeNotifier, hello.name_input)
+
+    notifier.notify_change(change)
+
+    assert hello.greeting.value == "Hello, World!"
 
 
 def test_instances_have_independent_widget_state() -> None:

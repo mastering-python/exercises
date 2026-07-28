@@ -1,62 +1,95 @@
-# Create a version of `functools.cached_property` that can be recalculated 
-# as needed.
-from datetime import datetime
+"""A cached-property descriptor whose value can be deleted and recalculated."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Generic, TypeVar, cast, overload
+
+__all__: list[str] = ["CachedProperty"]
+
+T = TypeVar("T")
+R = TypeVar("R")
 
 
-class _NotFound:
-    pass
+class CachedProperty(Generic[T, R]):
+    """Cache a computed value in each instance until that value is deleted."""
 
+    func: Callable[[T], R]
+    attrname: str | None
+    __name__: str
+    __qualname__: str
+    __module__: str
+    __doc__: str | None
+    __annotations__: dict[str, object]
+    __wrapped__: Callable[[T], R]
 
-class CachedProperty:
-    # Note that this is a very basic version of `functools.cached_property`. If
-    # you wish to use this in production I suggest looking at the original
-    # `cached_property` decorator and implement the locking and conflict
-    # handling as well.
-
-    def __init__(self, func):
+    def __init__(self, func: Callable[[T], R]) -> None:
+        self.__dict__.update(vars(func))
         self.func = func
+        self.attrname = None
+        self.__name__ = func.__name__
+        self.__qualname__ = func.__qualname__
+        self.__module__ = func.__module__
+        self.__doc__ = func.__doc__
+        self.__annotations__ = func.__annotations__
+        self.__wrapped__ = func
 
-    def clear(self):
-        self.cache.pop(self.attrname, None)
+    def __set_name__(self, owner: type[T], name: str) -> None:
+        if self.attrname is None:
+            self.attrname = name
+            return
+        if name != self.attrname:
+            raise TypeError(
+                "Cannot assign the same CachedProperty to two different names "
+                f"({self.attrname!r} and {name!r})."
+            )
 
-    def __set_name__(self, owner, name):
-        if not hasattr(owner, '_cache'):
-            owner._cache = dict()
-            # Add a clear method to the owner class
-            setattr(owner, f'clear_{name}', self.clear)
+    def _bound_name(self) -> str:
+        name: str | None = self.attrname
+        if name is None:
+            raise TypeError("CachedProperty has not been assigned to a class attribute")
+        return name
 
-        self.cache = owner._cache
-        self.attrname = name
+    @overload
+    def __get__(
+        self,
+        instance: None,
+        owner: type[T] | None = None,
+    ) -> CachedProperty[T, R]: ...
 
-    def __get__(self, instance, owner=None):
+    @overload
+    def __get__(self, instance: T, owner: type[T] | None = None) -> R: ...
+
+    def __get__(
+        self,
+        instance: T | None,
+        owner: type[T] | None = None,
+    ) -> CachedProperty[T, R] | R:
+        name: str = self._bound_name()
         if instance is None:
             return self
 
-        key = self.attrname
-        if key not in self.cache:
-            self.cache[key] = self.func(instance)
+        storage: dict[str, object] = self._instance_storage(instance, name)
+        if name in storage:
+            return cast(R, storage[name])
 
-        return self.cache[key]
+        value: R = self.func(instance)
+        storage[name] = value
+        return value
 
+    def __delete__(self, instance: T) -> None:
+        name: str = self._bound_name()
+        storage: dict[str, object] = self._instance_storage(instance, name)
+        try:
+            del storage[name]
+        except KeyError:
+            raise AttributeError(name) from None
 
-class SomeClass:
-
-    @CachedProperty
-    def current_time(self):
-        return datetime.now()
-
-
-def main():
-    some_class = SomeClass()
-    a = some_class.current_time
-    b = some_class.current_time
-    assert a == b
-    # Clear the cache. Even though your editor might complain, this method
-    # exists. Can you think of a better API to make the cache clearable?
-    some_class.clear_current_time()
-    c = some_class.current_time
-    assert a != c
-
-
-if __name__ == '__main__':
-    main()
+    @staticmethod
+    def _instance_storage(instance: T, name: str) -> dict[str, object]:
+        try:
+            return vars(instance)
+        except TypeError:
+            raise TypeError(
+                f"CachedProperty {name!r} requires instances with a __dict__"
+            ) from None

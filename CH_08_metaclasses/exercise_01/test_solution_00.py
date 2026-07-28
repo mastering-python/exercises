@@ -67,6 +67,36 @@ def test_indirectly_inherited_attributes_satisfy_requirements() -> None:
     assert Child.inherited_value == 8
 
 
+def test_inherited_descriptor_presence_is_checked_without_execution() -> None:
+    class RaisingDescriptor:
+        def __init__(self) -> None:
+            self.access_count: int = 0
+
+        def __get__(
+            self,
+            instance: object | None,
+            owner: type[object] | None,
+        ) -> object:
+            self.access_count += 1
+            raise AttributeError("descriptor access is unsafe")
+
+    raising_descriptor: RaisingDescriptor = RaisingDescriptor()
+
+    class Parent:
+        descriptor: ClassVar[RaisingDescriptor] = raising_descriptor
+
+    class Complete(
+        Parent,
+        metaclass=ExpectedAttrsMeta,
+        required_attributes=("descriptor",),
+    ):
+        pass
+
+    assert issubclass(Complete, Parent)
+    assert Parent.__dict__["descriptor"] is raising_descriptor
+    assert raising_descriptor.access_count == 0
+
+
 def test_missing_members_are_aggregated_in_requested_order() -> None:
     with pytest.raises(AttributeError) as error:
 
@@ -105,6 +135,33 @@ def test_required_attributes_keyword_is_consumed() -> None:
     ):
         value: int = 11
 
+    assert Complete.received_keywords == {}
+
+
+def test_unrelated_class_keyword_is_forwarded_to_base_hook() -> None:
+    class KeywordAware:
+        received_marker: ClassVar[str | None] = None
+        received_keywords: ClassVar[dict[str, object] | None] = None
+
+        def __init_subclass__(
+            cls,
+            *,
+            marker: str,
+            **kwargs: object,
+        ) -> None:
+            super().__init_subclass__()
+            cls.received_marker = marker
+            cls.received_keywords = dict(kwargs)
+
+    class Complete(
+        KeywordAware,
+        metaclass=ExpectedAttrsMeta,
+        required_attributes=("value",),
+        marker="forwarded",
+    ):
+        value: int = 11
+
+    assert Complete.received_marker == "forwarded"
     assert Complete.received_keywords == {}
 
 

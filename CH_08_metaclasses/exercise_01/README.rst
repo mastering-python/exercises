@@ -9,10 +9,17 @@ Question
 Solution
 --------
 
-``ExpectedAttrsMeta`` first creates the class and then validates the requested
-attribute names with ``hasattr``.  Checking the completed class means attributes
-defined by direct, indirect, or multiple inheritance satisfy the contract.
-Every missing name is reported together in the order requested.
+``ExpectedAttrsMeta`` forwards unrelated class keywords to normal class
+construction, then validates the requested names on the completed class.
+``inspect.getattr_static`` follows the method resolution order without invoking
+descriptors.  Attributes defined by direct, indirect, or multiple inheritance
+therefore satisfy the contract, and every missing name is reported together in
+the order requested.
+
+Post-creation validation has an intentional tradeoff: ``__init_subclass__`` and
+descriptor ``__set_name__`` hooks have already run if the contract later rejects
+the class.  Validation still occurs after construction so the completed class
+and its full inheritance behavior determine attribute availability.
 
 ``Trade`` is a valid example requiring ``buy`` and ``sell``.  Its methods return
 ``"buy"`` and ``"sell"`` respectively.

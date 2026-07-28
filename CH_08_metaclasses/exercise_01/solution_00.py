@@ -1,6 +1,9 @@
 """Validate required class attributes with a metaclass."""
 
 from collections.abc import Mapping
+from inspect import getattr_static
+
+_MISSING_ATTRIBUTE: object = object()
 
 
 class ExpectedAttrsMeta(type):
@@ -13,6 +16,7 @@ class ExpectedAttrsMeta(type):
         namespace: Mapping[str, object],
         *,
         required_attributes: tuple[str, ...] = (),
+        **kwargs: object,
     ) -> "ExpectedAttrsMeta":
         """Create a class, then validate its direct and inherited attributes."""
         class_namespace: dict[str, object] = dict(namespace)
@@ -21,11 +25,13 @@ class ExpectedAttrsMeta(type):
             name,
             bases,
             class_namespace,
+            **kwargs,
         )
         missing: tuple[str, ...] = tuple(
             attribute
             for attribute in required_attributes
-            if not hasattr(created_class, attribute)
+            if getattr_static(created_class, attribute, _MISSING_ATTRIBUTE)
+            is _MISSING_ATTRIBUTE
         )
         if missing:
             missing_text: str = ", ".join(missing)

@@ -6,6 +6,7 @@ import os
 import shlex
 import subprocess
 import sys
+from importlib.util import find_spec
 from pathlib import Path
 
 PLUGIN: str = "CH_10_testing_and_logging.exercise_01.file_documentation_plugin"
@@ -150,9 +151,13 @@ def test_documented_plugin_command_works_without_synthetic_pythonpath() -> None:
     )
     environment: dict[str, str] = os.environ.copy()
     environment.pop("PYTHONPATH", None)
+    command: list[str] = shlex.split(command_line)
+    setuptools_available: bool = find_spec("setuptools") is not None
+
+    assert command[:3] == ["uv", "run", "--no-sync"]
 
     completed: subprocess.CompletedProcess[str] = subprocess.run(
-        shlex.split(command_line),
+        command,
         cwd=REPOSITORY_ROOT,
         env=environment,
         check=False,
@@ -162,6 +167,22 @@ def test_documented_plugin_command_works_without_synthetic_pythonpath() -> None:
     )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
+    if setuptools_available:
+        availability_probe: subprocess.CompletedProcess[str] = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import importlib.util; "
+                    "raise SystemExit("
+                    "importlib.util.find_spec('setuptools') is None)"
+                ),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert availability_probe.returncode == 0, availability_probe.stderr
 
 
 def test_explicit_non_pattern_python_test_requires_module_docstring(

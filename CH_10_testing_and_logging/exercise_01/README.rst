@@ -48,10 +48,11 @@ Load the plugin explicitly:
 
 .. code-block:: console
 
-   $ uv run python -m pytest -p CH_10_testing_and_logging.exercise_01.file_documentation_plugin --collect-only -q CH_10_testing_and_logging/exercise_01/tests_plugin/test_solution_00.py
+   $ uv run --no-sync python -m pytest -p CH_10_testing_and_logging.exercise_01.file_documentation_plugin --collect-only -q CH_10_testing_and_logging/exercise_01/tests_plugin/test_solution_00.py
 
 The plugin validates source during collection; it does not alter test execution
-or require documentation on non-Python collectors.
+or require documentation on non-Python collectors.  ``--no-sync`` preserves the
+repository environment prepared by the required all-groups dependency sync.
 
 Question 4: run static analysis with tox
 ----------------------------------------

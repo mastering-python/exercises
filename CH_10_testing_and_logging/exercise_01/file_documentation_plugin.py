@@ -13,12 +13,21 @@ if TYPE_CHECKING:
     import pytest
 
 
-def _matches_python_files(file_path: Path, config: pytest.Config) -> bool:
-    """Return whether *file_path* matches pytest's configured Python patterns."""
+def _is_python_test(
+    file_path: Path,
+    parent: pytest.Collector,
+) -> bool:
+    """Return whether pytest will collect *file_path* as a Python test."""
     if file_path.suffix != ".py":
         return False
 
-    patterns: list[str] = cast(list[str], config.getini("python_files"))
+    if parent.session.isinitpath(file_path):
+        return True
+
+    patterns: list[str] = cast(
+        list[str],
+        parent.config.getini("python_files"),
+    )
     return any(_matches_pattern(file_path, pattern) for pattern in patterns)
 
 
@@ -50,9 +59,9 @@ def _read_module(file_path: Path) -> ast.Module:
 
 
 def _collection_error(message: str) -> Exception:
-    from _pytest.nodes import Collector
+    import pytest
 
-    return Collector.CollectError(message)
+    return pytest.Collector.CollectError(message)
 
 
 def pytest_collect_file(
@@ -60,7 +69,7 @@ def pytest_collect_file(
     parent: pytest.Collector,
 ) -> pytest.Collector | None:
     """Reject collected Python test modules without file-level documentation."""
-    if not _matches_python_files(file_path, parent.config):
+    if not _is_python_test(file_path, parent):
         return None
 
     module: ast.Module = _read_module(file_path)

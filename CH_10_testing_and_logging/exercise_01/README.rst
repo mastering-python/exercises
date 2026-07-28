@@ -36,17 +36,19 @@ Question 3: require file-level test documentation
 -------------------------------------------------
 
 ``file_documentation_plugin.py`` provides the pytest 9
-``pytest_collect_file(file_path: pathlib.Path, parent)`` hook.  It checks only
-``.py`` files whose basenames match the active ``python_files`` configuration.
-A non-empty, syntactically real module docstring is accepted.  Missing
-docstrings, malformed source, unreadable files, and invalid encodings become
-clear collection errors.  Non-test Python files are left to other collectors.
+``pytest_collect_file(file_path: pathlib.Path, parent)`` hook.  It checks ``.py``
+files selected explicitly or matched by the active ``python_files``
+configuration.  Patterns without path separators match basenames; patterns
+with separators match paths using pytest's platform-aware behavior.  A
+non-empty, syntactically real module docstring is accepted.  Missing docstrings,
+malformed source, unreadable files, and invalid encodings become clear
+collection errors.  Non-test Python files are left to other collectors.
 
 Load the plugin explicitly:
 
 .. code-block:: console
 
-   $ uv run pytest -p CH_10_testing_and_logging.exercise_01.file_documentation_plugin
+   $ uv run python -m pytest -p CH_10_testing_and_logging.exercise_01.file_documentation_plugin --collect-only -q CH_10_testing_and_logging/exercise_01/tests_plugin/test_solution_00.py
 
 The plugin validates source during collection; it does not alter test execution
 or require documentation on non-Python collectors.

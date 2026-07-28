@@ -120,6 +120,19 @@ def test_skips_nested_huge_integer_keys_that_cannot_be_rendered() -> None:
     assert matches == []
 
 
+def test_skips_deep_tuple_keys_and_continues_to_safe_keys() -> None:
+    deep_key: object = 0
+    _depth: int
+    for _depth in range(500):
+        deep_key = cast(object, (deep_key,))
+    values: dict[object, object] = {deep_key: "too deep", "safe": 1}
+    completer: Completer = Completer({"values": values})
+
+    matches: list[str] = list(completer.item_matches("values["))
+
+    assert matches == ["values['safe']"]
+
+
 def test_completes_list_tuple_and_string_indices() -> None:
     namespace: dict[str, object] = {
         "items": ["first", "second"],

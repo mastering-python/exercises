@@ -37,11 +37,11 @@ def _is_safe_literal(value: object) -> bool:
 
 
 def _render_safe_literal(value: object) -> str | None:
-    if not _is_safe_literal(value):
-        return None
     try:
+        if not _is_safe_literal(value):
+            return None
         return repr(value)
-    except ValueError:
+    except (RecursionError, ValueError):
         return None
 
 

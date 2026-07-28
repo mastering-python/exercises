@@ -22,14 +22,14 @@ def test_colorize_wraps_match_and_resets_style() -> None:
 
 
 def test_default_color_preserves_first_candidate_text() -> None:
-    completer: ColorCompleter = ColorCompleter({"values": {"alpha": 1, "alpine": 2}})
+    completer: ColorCompleter = ColorCompleter({"values": ["alpha", "alpine"]})
 
     match: str | None = completer.complete("values[", 0)
 
     assert match is not None
     assert match.startswith(Fore.CYAN)
     assert match.endswith(Style.RESET_ALL)
-    assert _ANSI_ESCAPE.sub("", match) == "values['alpha']"
+    assert _ANSI_ESCAPE.sub("", match) == "values[0]"
 
 
 def test_custom_color_wraps_multiple_candidates_and_preserves_sentinel() -> None:

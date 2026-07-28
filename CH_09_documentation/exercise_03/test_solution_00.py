@@ -8,7 +8,7 @@ from collections.abc import ValuesView
 from copy import deepcopy
 from pathlib import Path
 from types import NoneType
-from typing import ClassVar, cast, get_type_hints
+from typing import ClassVar, cast, get_args, get_origin, get_type_hints
 
 import pytest
 
@@ -143,10 +143,19 @@ def test_tree_alias_has_exact_recursive_shape() -> None:
 
 
 def test_function_annotations_are_exact() -> None:
-    assert get_type_hints(count_nodes) == {
-        "tree": Tree,
-        "return": int,
-    }
+    hints: dict[str, object] = get_type_hints(count_nodes)
+    tree_hint: object = hints["tree"]
+    key_hint: object
+    recursive_hint: object
+    key_hint, recursive_hint = get_args(tree_hint)
+
+    assert count_nodes.__annotations__["tree"] == "Tree"
+    assert get_origin(tree_hint) is dict
+    assert key_hint is str
+    assert recursive_hint == "Tree" or (
+        getattr(recursive_hint, "__forward_arg__", None) == "Tree"
+    )
+    assert hints["return"] is int
     assert get_type_hints(main) == {"return": NoneType}
 
 

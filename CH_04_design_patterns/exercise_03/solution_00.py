@@ -16,11 +16,11 @@ class Borg:
         cls._shared_state = {}
 
     def __new__(cls: type[_BorgT], *args: Any, **kwargs: Any) -> _BorgT:
-        del args, kwargs
-        allocator: Callable[[type[_BorgT]], _BorgT] = cast(
-            Callable[[type[_BorgT]], _BorgT], super().__new__
-        )
-        instance: _BorgT = allocator(cls)
+        allocator: Callable[..., _BorgT] = cast(Callable[..., _BorgT], super().__new__)
+        if allocator is object.__new__:
+            instance: _BorgT = allocator(cls)
+        else:
+            instance = allocator(cls, *args, **kwargs)
         object.__setattr__(instance, "__dict__", cls._shared_state)
         return instance
 

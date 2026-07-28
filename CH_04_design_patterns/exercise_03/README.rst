@@ -25,7 +25,9 @@ Subclass ``__init__`` methods still run for every construction, so their
 assignments update that exact class's shared state; merely constructing another
 instance does not otherwise reset it.  Allocation is cooperative in multiple
 inheritance: later ``__new__`` hooks in the method resolution order are called
-when they also delegate with ``super().__new__(cls)``.
+with the constructor arguments and can consume or forward them.  A terminal
+``object.__new__`` receives only the class, leaving ordinary constructor
+arguments for the subclass initializer.
 
 The Borg pattern is described in the immutable upstream reference:
 https://github.com/mastering-python/code_2/blob/a012f6ce3f5bf11f5bf380d1c4e7f743355adb89/CH_04_design_patterns/T_11_borg_and_singleton.rst

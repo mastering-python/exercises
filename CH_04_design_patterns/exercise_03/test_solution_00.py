@@ -180,23 +180,31 @@ def test_subclass_keywords_are_forwarded_to_cooperative_bases() -> None:
     assert second.value == 7
 
 
-def test_later_mro_cooperative_new_runs_and_combined_state_is_shared() -> None:
+def test_later_mro_cooperative_new_receives_allocation_arguments() -> None:
     class NewHook:
-        calls: ClassVar[list[type[object]]] = []
+        calls: ClassVar[list[tuple[type[object], str]]] = []
 
-        def __new__(cls) -> NewHook:
-            NewHook.calls.append(cls)
-            return super().__new__(cls)
+        def __new__(
+            cls,
+            *args: object,
+            allocation_marker: str,
+            **kwargs: object,
+        ) -> NewHook:
+            NewHook.calls.append((cls, allocation_marker))
+            return super().__new__(cls, *args, **kwargs)
 
     class Combined(Borg, NewHook):
         label: str
 
-    first: Combined = Combined()
-    second: Combined = Combined()
-    first.label = "shared"
+        def __init__(self, *, allocation_marker: str) -> None:
+            self.label = allocation_marker
 
-    assert NewHook.calls == [Combined, Combined]
-    assert second.label == "shared"
+    first: Combined = Combined(allocation_marker="first")
+    second: Combined = Combined(allocation_marker="second")
+
+    assert NewHook.calls == [(Combined, "first"), (Combined, "second")]
+    assert first.label == "second"
+    assert second.label == "second"
 
 
 def test_shared_dict_binding_bypasses_restrictive_setattr() -> None:

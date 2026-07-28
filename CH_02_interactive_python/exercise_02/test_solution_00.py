@@ -36,6 +36,7 @@ class FakeReadline:
         self.completer: _CompletionFunction | None = None
         self.display_hook: _DisplayHook | None = None
         self.bindings: list[str] = []
+        self.redisplay_calls: int = 0
 
     def get_completer_delims(self) -> str:
         return self._delimiters
@@ -54,6 +55,9 @@ class FakeReadline:
 
     def parse_and_bind(self, binding: str) -> None:
         self.bindings.append(binding)
+
+    def redisplay(self) -> None:
+        self.redisplay_calls += 1
 
 
 def test_colorize_wraps_match_and_resets_style() -> None:
@@ -104,7 +108,9 @@ def test_display_hook_colors_and_resets_each_candidate(
     ]
 
 
-def test_configure_readline_preserves_expression_text_and_registers_hooks() -> None:
+def test_configure_gnu_readline_registers_hook_and_redisplays_buffer(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     readline: FakeReadline = FakeReadline(
         delimiters=" \t.[]'\"(),+-\\:",
         library_version="8.2",
@@ -115,19 +121,29 @@ def test_configure_readline_preserves_expression_text_and_registers_hooks() -> N
 
     assert readline.get_completer_delims() == " \t:"
     assert readline.completer == completer.complete
-    assert readline.display_hook == completer.display_matches
+    assert readline.display_hook is not None
     assert readline.bindings == ["tab: complete"]
+    readline.display_hook("values[", ["values[0]"], len("values[0]"))
+    assert capsys.readouterr().out.splitlines() == [
+        "",
+        f"{Fore.CYAN}values[0]{Style.RESET_ALL}",
+    ]
+    assert readline.redisplay_calls == 1
 
 
-def test_configure_readline_uses_libedit_binding() -> None:
+def test_configure_libedit_uses_plain_safe_fallback() -> None:
     readline: FakeReadline = FakeReadline(
         delimiters=" \t[]'\"",
         library_version="EditLine wrapper",
     )
+    completer: ColorCompleter = ColorCompleter({"values": [1]})
 
-    solution_00.configure_readline(readline, ColorCompleter())
+    solution_00.configure_readline(readline, completer)
 
     assert readline.bindings == ["bind ^I rl_complete"]
+    assert readline.display_hook is None
+    assert readline.completer is not None
+    assert readline.completer("values[", 0) == "values[0]"
 
 
 def test_color_completer_inherits_safe_expression_rejection() -> None:

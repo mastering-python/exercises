@@ -39,6 +39,8 @@ class ReadlineLike(Protocol):
 
     def parse_and_bind(self, binding: str, /) -> None: ...
 
+    def redisplay(self) -> None: ...
+
 
 def colorize(match: str, color: str) -> str:
     """Wrap a completion candidate in a color and reset the terminal style."""
@@ -103,6 +105,21 @@ def _uses_libedit(readline_module: ReadlineLike) -> bool:
     return isinstance(documentation, str) and "libedit" in documentation.casefold()
 
 
+def _display_hook(
+    readline_module: ReadlineLike,
+    completer: ColorCompleter,
+) -> _DisplayHook:
+    def display_matches(
+        substitution: str,
+        matches: Sequence[str],
+        longest_match_length: int,
+    ) -> None:
+        completer.display_matches(substitution, matches, longest_match_length)
+        readline_module.redisplay()
+
+    return display_matches
+
+
 def configure_readline(
     readline_module: ReadlineLike,
     completer: ColorCompleter,
@@ -111,15 +128,17 @@ def configure_readline(
     delimiters: str = _completion_delimiters(readline_module.get_completer_delims())
     readline_module.set_completer_delims(delimiters)
     readline_module.set_completer(completer.complete)
-    readline_module.set_completion_display_matches_hook(completer.display_matches)
-    binding: str = (
-        "bind ^I rl_complete" if _uses_libedit(readline_module) else "tab: complete"
-    )
+    uses_libedit: bool = _uses_libedit(readline_module)
+    if not uses_libedit:
+        readline_module.set_completion_display_matches_hook(
+            _display_hook(readline_module, completer)
+        )
+    binding: str = "bind ^I rl_complete" if uses_libedit else "tab: complete"
     readline_module.parse_and_bind(binding)
 
 
 def main() -> None:
-    """Run an interactive colored-completion demonstration."""
+    """Run an interactive completion demonstration."""
     import readline
 
     just_fix_windows_console()

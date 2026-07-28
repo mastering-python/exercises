@@ -60,12 +60,18 @@ def test_typed_dict_field_hints_are_exact() -> None:
         "email": str,
         "phone": str | None,
     }
+    assert Contact.__required_keys__ == frozenset({"email", "phone"})
+    assert Contact.__optional_keys__ == frozenset()
     assert get_type_hints(UserRecord) == {
         "name": str,
         "age": int,
         "active": bool,
         "contact": Contact,
     }
+    assert UserRecord.__required_keys__ == frozenset(
+        {"name", "age", "active", "contact"}
+    )
+    assert UserRecord.__optional_keys__ == frozenset()
 
 
 def test_function_annotations_are_exact() -> None:

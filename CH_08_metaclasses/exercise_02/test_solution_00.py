@@ -1,6 +1,7 @@
 import subprocess
 import sys
-from typing import ClassVar
+from collections.abc import Mapping
+from typing import ClassVar, cast
 
 import pytest
 
@@ -121,6 +122,80 @@ def test_multiple_missing_bases_are_aggregated_in_requested_order() -> None:
     assert str(error.value) == "Broken must inherit FirstMissingBase, SecondMissingBase"
 
 
+@pytest.mark.parametrize(
+    "invalid_expected_bases",
+    [
+        None,
+        [SomeBaseClass],
+        (SomeBaseClass, "not-a-type"),
+    ],
+    ids=["none", "list", "non-type-item"],
+)
+def test_invalid_requirements_are_rejected_before_class_hook_side_effects(
+    invalid_expected_bases: object,
+) -> None:
+    events: list[str] = []
+
+    class RecordingDescriptor:
+        def __set_name__(self, owner: type[object], name: str) -> None:
+            events.append(f"set_name:{name}")
+
+    class HookBase:
+        def __init_subclass__(cls) -> None:
+            events.append("init_subclass")
+            super().__init_subclass__()
+
+    with pytest.raises(TypeError) as error:
+
+        class Broken(
+            HookBase,
+            metaclass=ExpectedBasesMeta,
+            expected_bases=cast(
+                tuple[type, ...],
+                invalid_expected_bases,
+            ),
+        ):
+            descriptor: ClassVar[RecordingDescriptor] = RecordingDescriptor()
+
+        _ = Broken
+
+    assert (
+        str(error.value)
+        == "Broken expected_bases must be a tuple containing only types"
+    )
+    assert events == []
+
+
+def test_missing_base_validation_runs_after_class_construction_hooks() -> None:
+    events: list[str] = []
+
+    class RecordingDescriptor:
+        def __set_name__(self, owner: type[object], name: str) -> None:
+            events.append(f"set_name:{name}")
+
+    class HookBase:
+        def __init_subclass__(cls) -> None:
+            events.append("init_subclass")
+            super().__init_subclass__()
+
+    class MissingBase:
+        pass
+
+    with pytest.raises(TypeError) as error:
+
+        class Broken(
+            HookBase,
+            metaclass=ExpectedBasesMeta,
+            expected_bases=(MissingBase,),
+        ):
+            descriptor: ClassVar[RecordingDescriptor] = RecordingDescriptor()
+
+        _ = Broken
+
+    assert str(error.value) == "Broken must inherit MissingBase"
+    assert events == ["set_name:descriptor", "init_subclass"]
+
+
 def test_expected_bases_keyword_is_consumed() -> None:
     class KeywordAware:
         received_keywords: ClassVar[dict[str, object] | None] = None
@@ -156,6 +231,96 @@ def test_unrelated_class_keyword_is_forwarded_to_keyword_only_hook() -> None:
         pass
 
     assert Complete.received_marker == "forwarded"
+
+
+def test_prepared_namespace_identity_is_preserved_through_metaclass_mro() -> None:
+    class PreparedNamespace(dict[str, object]):
+        pass
+
+    class IdentityCheckingMeta(type):
+        prepared_namespace: ClassVar[dict[str, object] | None] = None
+        received_namespace: ClassVar[Mapping[str, object] | None] = None
+
+        @classmethod
+        def __prepare__(
+            mcls,
+            name: str,
+            bases: tuple[type, ...],
+            /,
+            **kwargs: object,
+        ) -> dict[str, object]:
+            namespace: PreparedNamespace = PreparedNamespace()
+            mcls.prepared_namespace = namespace
+            return namespace
+
+        def __new__(
+            cls: type["IdentityCheckingMeta"],
+            name: str,
+            bases: tuple[type, ...],
+            namespace: Mapping[str, object],
+            **kwargs: object,
+        ) -> "IdentityCheckingMeta":
+            cls.received_namespace = namespace
+            return super().__new__(
+                cls,
+                name,
+                bases,
+                dict(namespace),
+                **kwargs,
+            )
+
+    class CombinedMeta(ExpectedBasesMeta, IdentityCheckingMeta):
+        pass
+
+    class Complete(metaclass=CombinedMeta):
+        pass
+
+    assert Complete.__name__ == "Complete"
+    assert CombinedMeta.received_namespace is CombinedMeta.prepared_namespace
+
+
+def test_expected_bases_is_consumed_before_cooperative_metaclass_init() -> None:
+    events: list[str] = []
+
+    class StrictLifecycleMeta(type):
+        def __new__(
+            cls: type["StrictLifecycleMeta"],
+            name: str,
+            bases: tuple[type, ...],
+            namespace: dict[str, object],
+            *,
+            marker: str,
+        ) -> "StrictLifecycleMeta":
+            events.append(f"new:{marker}")
+            return super().__new__(cls, name, bases, namespace)
+
+        def __init__(
+            self,
+            name: str,
+            bases: tuple[type, ...],
+            namespace: dict[str, object],
+            *,
+            marker: str,
+        ) -> None:
+            events.append(f"init:{marker}")
+            super().__init__(name, bases, namespace)
+
+    class CombinedMeta(ExpectedBasesMeta, StrictLifecycleMeta):
+        pass
+
+    class RequiredBase:
+        pass
+
+    class Complete(
+        RequiredBase,
+        metaclass=CombinedMeta,
+        expected_bases=(RequiredBase,),
+        marker="cooperative",
+    ):
+        pass
+
+    assert Complete.__name__ == "Complete"
+    assert events == ["new:cooperative", "init:cooperative"]
 
 
 def test_module_import_is_silent() -> None:

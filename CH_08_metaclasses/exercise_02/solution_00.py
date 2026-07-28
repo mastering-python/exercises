@@ -1,6 +1,19 @@
 """Validate required base classes with a metaclass."""
 
 from collections.abc import Mapping
+from typing import cast
+
+
+def _validate_expected_bases(name: str, expected_bases: object) -> None:
+    """Validate the required-base contract before class construction."""
+    if not isinstance(expected_bases, tuple):
+        raise TypeError(f"{name} expected_bases must be a tuple containing only types")
+    requirements: tuple[object, ...] = cast(
+        tuple[object, ...],
+        expected_bases,
+    )
+    if not all(isinstance(base, type) for base in requirements):
+        raise TypeError(f"{name} expected_bases must be a tuple containing only types")
 
 
 class SomeBaseClass:
@@ -20,7 +33,8 @@ class ExpectedBasesMeta(type):
         **kwargs: object,
     ) -> "ExpectedBasesMeta":
         """Create a class and validate its full inheritance hierarchy."""
-        class_namespace: dict[str, object] = dict(namespace)
+        _validate_expected_bases(name, expected_bases)
+        class_namespace: dict[str, object] = cast(dict[str, object], namespace)
         created_class: ExpectedBasesMeta = super().__new__(
             cls,
             name,
@@ -35,6 +49,19 @@ class ExpectedBasesMeta(type):
             missing_names: str = ", ".join(base.__name__ for base in missing_bases)
             raise TypeError(f"{name} must inherit {missing_names}")
         return created_class
+
+    def __init__(
+        self,
+        name: str,
+        bases: tuple[type, ...],
+        namespace: Mapping[str, object],
+        *,
+        expected_bases: tuple[type, ...] = (),
+        **kwargs: object,
+    ) -> None:
+        """Consume base requirements and cooperatively initialize the class."""
+        class_namespace: dict[str, object] = cast(dict[str, object], namespace)
+        super().__init__(name, bases, class_namespace, **kwargs)
 
 
 class Trade(

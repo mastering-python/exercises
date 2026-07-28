@@ -11,21 +11,31 @@ Question
 Solution
 --------
 
-``ExpectedBasesMeta`` consumes the ``expected_bases`` class keyword and
-forwards unrelated class keywords through normal class construction. It copies
-the supplied namespace, creates the class, then uses ``issubclass`` against the
-completed class. Direct, indirect, multilevel, and mixin inheritance therefore
-satisfy a requirement. An empty requirement tuple allows an ordinary class.
+``ExpectedBasesMeta`` consumes the ``expected_bases`` class keyword in both
+metaclass ``__new__`` and ``__init__``. Unrelated class keywords continue
+cooperatively through both stages. The original namespace returned by
+``__prepare__`` is forwarded by identity rather than copied, preserving custom
+mapping behavior in a combined metaclass.
+
+Before class construction, ``expected_bases`` must be a tuple containing only
+types. Invalid values raise
+``TypeError("<ClassName> expected_bases must be a tuple containing only types")``
+before descriptor ``__set_name__`` or base ``__init_subclass__`` hooks can run.
+An empty requirement tuple allows an ordinary class.
+
+After that boundary check, the metaclass creates the class and uses
+``issubclass`` against the completed class. Direct, indirect, multilevel, and
+mixin inheritance therefore satisfy a requirement.
 
 Every missing base is reported together in requested order. For example, a
 class named ``Broken`` missing ``FirstBase`` and ``SecondBase`` raises
 ``TypeError("Broken must inherit FirstBase, SecondBase")``.
 
-Validation after class construction has an intentional tradeoff:
-``__init_subclass__`` and descriptor ``__set_name__`` hooks have already run
-before a missing-base error is raised. Their side effects are not rolled back.
-This timing is necessary to validate the completed class and its full method
-resolution order.
+For a valid-shaped requirement tuple, missing-base validation after class
+construction has an intentional tradeoff: descriptor ``__set_name__`` runs
+first, then base ``__init_subclass__``, before the missing-base error is raised.
+Their side effects are not rolled back. This timing is necessary to validate
+the completed class and its full method resolution order.
 
 ``Trade`` is a valid example requiring ``SomeBaseClass``. The guarded module
 demonstration prints whether that inheritance requirement is satisfied.

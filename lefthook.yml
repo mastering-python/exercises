@@ -1,0 +1,23 @@
+pre-commit:
+  parallel: false
+  commands:
+    format:
+      glob: "**/*.py"
+      run: uv run ruff format {staged_files}
+      stage_fixed: true
+    lint:
+      glob: "**/*.py"
+      run: uv run ruff check --fix {staged_files}
+      stage_fixed: true
+
+pre-push:
+  parallel: true
+  commands:
+    mypy:
+      run: uv run mypy .
+    pyrefly:
+      run: uv run pyrefly check
+    pyright:
+      run: uv run pyright
+    pytest:
+      run: uv run pytest

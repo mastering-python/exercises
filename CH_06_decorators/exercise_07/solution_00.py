@@ -202,83 +202,6 @@ def _function_globals(
     return cast(dict[str, Any], candidate_globals)
 
 
-def _declared_owner_namespace(
-    function: Callable[..., object],
-    signature: inspect.Signature,
-    defining_locals: dict[str, Any],
-    bound: inspect.BoundArguments,
-) -> dict[str, Any] | None:
-    function_module: object = getattr(function, "__module__", None)
-    function_qualname: object = getattr(function, "__qualname__", None)
-    if not isinstance(function_module, str) or not isinstance(
-        function_qualname,
-        str,
-    ):
-        return None
-
-    owner_qualname, separator, attribute_name = function_qualname.rpartition(".")
-    if not separator:
-        return None
-    owner_name: str = owner_qualname.rpartition(".")[2]
-    if not owner_name or owner_name == "<locals>":
-        return None
-
-    global_namespace: dict[str, Any] | None = _function_globals(function)
-    if owner_name in defining_locals or (
-        global_namespace is not None and owner_name in global_namespace
-    ):
-        return None
-
-    parameter_names: tuple[str, ...] = tuple(signature.parameters)
-    if not parameter_names:
-        return None
-    receiver: object | None = bound.arguments.get(parameter_names[0])
-    if receiver is None:
-        return None
-    receiver_type: type[object] = (
-        cast(type[object], receiver) if isinstance(receiver, type) else type(receiver)
-    )
-    receiver_mro: tuple[type[object], ...] = cast(
-        tuple[type[object], ...],
-        type.__getattribute__(receiver_type, "__mro__"),
-    )
-
-    for candidate_owner in receiver_mro:
-        candidate_module: object = type.__getattribute__(
-            candidate_owner,
-            "__module__",
-        )
-        candidate_qualname: object = type.__getattribute__(
-            candidate_owner,
-            "__qualname__",
-        )
-        if candidate_module != function_module or candidate_qualname != owner_qualname:
-            continue
-        try:
-            descriptor: object = inspect.getattr_static(
-                candidate_owner,
-                attribute_name,
-            )
-        except AttributeError:
-            continue
-        target: object = descriptor
-        if isinstance(descriptor, (classmethod, staticmethod)):
-            descriptor_object: object = cast(object, descriptor)
-            target = cast(
-                object,
-                object.__getattribute__(descriptor_object, "__func__"),
-            )
-        if not callable(target):
-            continue
-        try:
-            original: Callable[..., object] = inspect.unwrap(target)
-        except ValueError:
-            continue
-        if original is function:
-            return {owner_name: candidate_owner}
-    return None
-
-
 def _resolve_parameter_annotations(
     function: Callable[..., object],
     signature: inspect.Signature,
@@ -345,36 +268,15 @@ def type_check(
         annotations_cache: dict[str, Any] | None = None
         resolution_lock: LockType = Lock()
 
-        def resolve_annotations(
-            bound: inspect.BoundArguments,
-        ) -> dict[str, Any]:
+        def resolve_annotations() -> dict[str, Any]:
             nonlocal annotations_cache
             with resolution_lock:
                 if annotations_cache is None:
-                    try:
-                        resolved: dict[str, Any] = _resolve_parameter_annotations(
-                            function,
-                            signature,
-                            defining_locals,
-                        )
-                    except NameError:
-                        owner_namespace: dict[str, Any] | None = (
-                            _declared_owner_namespace(
-                                function,
-                                signature,
-                                defining_locals,
-                                bound,
-                            )
-                        )
-                        if owner_namespace is None:
-                            raise
-                        local_namespace: dict[str, Any] = dict(defining_locals)
-                        local_namespace.update(owner_namespace)
-                        resolved = _resolve_parameter_annotations(
-                            function,
-                            signature,
-                            local_namespace,
-                        )
+                    resolved: dict[str, Any] = _resolve_parameter_annotations(
+                        function,
+                        signature,
+                        defining_locals,
+                    )
                     annotations_cache = resolved
                 return annotations_cache
 
@@ -382,7 +284,7 @@ def type_check(
         def checked(*args: P.args, **kwargs: P.kwargs) -> R:
             bound: inspect.BoundArguments = signature.bind(*args, **kwargs)
             bound.apply_defaults()
-            annotations: dict[str, Any] = resolve_annotations(bound)
+            annotations: dict[str, Any] = resolve_annotations()
 
             for name, value in bound.arguments.items():
                 annotation: object | None = annotations.get(name)

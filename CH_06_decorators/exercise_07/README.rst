@@ -34,12 +34,14 @@ including parameters without constraints, using runtime instance checks. It
 then validates configured parameters. ``Literal`` matching requires both exact
 runtime type and equality, so equal values such as ``1`` and ``True`` remain
 distinct. Type hints resolve lazily on the first call, with defining locals and
-function globals available for forward references. A still-unresolved nested
-class self-reference may use the declared owner only after the receiver's
-module, qualified name, and static method descriptor prove ownership of the
-original function. Arbitrary argument types never enter the annotation
-namespace. Only a successful complete resolution is cached; unresolved names
-therefore raise when called rather than when decorated.
+function globals available for forward references. Arbitrary argument and
+receiver types never enter the annotation namespace. Module-level class
+self-references, later globals, and function-local types defined before the
+decorated function are supported. An unresolved nested-local class
+self-reference is deliberately unsupported and raises ``NameError`` on first
+call rather than guessing an owner. Only a successful complete resolution is
+cached; unresolved names therefore raise when called rather than when
+decorated.
 
 Unknown parameter names, constraints targeting ``*args`` or ``**kwargs``, and
 objects without a callable ``validate`` method are rejected when the function

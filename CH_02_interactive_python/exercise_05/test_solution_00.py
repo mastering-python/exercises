@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 import subprocess
@@ -65,13 +66,21 @@ class _FakeAccessor:
             raise self.error
 
 
-def test_history_match_is_frozen_and_orders_only_by_location() -> None:
+def test_history_match_equality_includes_source_and_order_uses_location() -> None:
     first: HistoryMatch = HistoryMatch(1, 2, "z")
     same_location: HistoryMatch = HistoryMatch(1, 2, "a")
     later: HistoryMatch = HistoryMatch(2, 1, "a")
 
-    assert first == same_location
-    assert sorted([later, first]) == [first, later]
+    assert first != same_location
+    assert not first < same_location
+    assert not same_location < first
+    assert first <= same_location
+    assert same_location <= first
+    assert not first > same_location
+    assert not same_location > first
+    assert first >= same_location
+    assert same_location >= first
+    assert sorted([later, same_location, first]) == [same_location, first, later]
     with pytest.raises(FrozenInstanceError):
         first.source = "changed"  # type: ignore[misc]
 
@@ -115,6 +124,14 @@ def test_search_history_consumes_one_shot_iterable_once() -> None:
         HistoryMatch(1, 1, "target"),
         HistoryMatch(2, 1, "target"),
     ]
+
+
+def test_format_history_match_frames_multiline_and_trailing_empty_lines() -> None:
+    match: HistoryMatch = HistoryMatch(3, 7, "first\nsecond\n")
+
+    assert solution_00.format_history_match(match) == (
+        "3:7: first\n3:7: | second\n3:7: | "
+    )
 
 
 def test_iter_ipython_history_uses_raw_unfiltered_nonunique_search() -> None:
@@ -233,6 +250,25 @@ def test_main_prints_matches_and_returns_zero(
     assert capsys.readouterr().out == "1:4: print('target')\n"
 
 
+def test_main_frames_multiline_matches_so_adjacent_records_are_distinct(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_history(
+        accessor: HistoryAccessor | None = None,
+    ) -> Iterator[tuple[int, int, str]]:
+        assert accessor is None
+        yield (1, 1, "first\nsecond\n")
+        yield (1, 2, "next")
+
+    monkeypatch.setattr(solution_00, "iter_ipython_history", fake_history)
+
+    assert main(["first|next"]) == 0
+    assert capsys.readouterr().out == (
+        "1:1: first\n1:1: | second\n1:1: | \n1:2: next\n"
+    )
+
+
 def test_main_prints_nothing_and_returns_one_when_no_match(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -249,18 +285,25 @@ def test_main_prints_nothing_and_returns_one_when_no_match(
     assert capsys.readouterr().out == ""
 
 
-def test_main_propagates_invalid_regex(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_history(
-        accessor: HistoryAccessor | None = None,
-    ) -> Iterator[tuple[int, int, str]]:
-        assert accessor is None
-        raise AssertionError("history must not be read for an invalid regex")
-        yield
+def test_main_reports_invalid_regex_before_reading_history(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def reject_accessor_construction() -> HistoryAccessor:
+        raise AssertionError("history accessor must not be created")
 
-    monkeypatch.setattr(solution_00, "iter_ipython_history", fake_history)
+    monkeypatch.setattr(solution_00, "HistoryAccessor", reject_accessor_construction)
 
-    with pytest.raises(re.error):
+    with pytest.raises(SystemExit) as error_info:
         main(["["])
+
+    assert error_info.value.code == 2
+    captured_stdout: str
+    captured_stderr: str
+    captured_stdout, captured_stderr = capsys.readouterr()
+    assert captured_stdout == ""
+    assert "error: invalid regular expression:" in captured_stderr
+    assert "Traceback" not in captured_stderr
 
 
 def test_import_does_not_construct_accessor_or_emit_output() -> None:
@@ -283,3 +326,31 @@ import CH_02_interactive_python.exercise_05.solution_00
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
     assert result.stderr == ""
+
+
+def test_cli_reports_missing_default_profile_without_creating_it(
+    tmp_path: Path,
+) -> None:
+    ipython_dir: Path = tmp_path / "isolated-ipython"
+    environment: dict[str, str] = os.environ.copy()
+    environment["IPYTHONDIR"] = str(ipython_dir)
+
+    result: subprocess.CompletedProcess[str] = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "CH_02_interactive_python.exercise_05.solution_00",
+            "target",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "error: unable to open IPython history:" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert ipython_dir.is_dir()
+    assert list(ipython_dir.iterdir()) == []

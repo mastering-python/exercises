@@ -31,7 +31,8 @@ scientific = [
     "pandas>=2.2",
 ]
 nlp = [
-    "spacy>=3.8",
+    "spacy>=3.8.13,<3.8.14",
+    "typer>=0.25,<0.26",
 ]
 native = [
     "build>=1.3",

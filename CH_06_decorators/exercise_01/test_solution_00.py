@@ -525,6 +525,38 @@ def test_track_preserves_valid_type_params_metadata() -> None:
     assert signature(tracked_increment) == signature(increment)
 
 
+def test_track_preserves_valid_annotate_metadata() -> None:
+    def annotate(format_value: int) -> dict[str, object]:
+        return {"format": format_value}
+
+    annotate_values: tuple[Callable[[int], dict[str, object]] | None, ...] = (
+        annotate,
+        None,
+    )
+
+    class Increment:
+        __slots__: tuple[str, ...] = ("__annotate__",)
+
+        def __init__(
+            self,
+            annotate_value: Callable[[int], dict[str, object]] | None,
+        ) -> None:
+            self.__annotate__: Callable[[int], dict[str, object]] | None = (
+                annotate_value
+            )
+
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    for annotate_value in annotate_values:
+        increment: Increment = Increment(annotate_value)
+        tracked_increment: Callable[[int], int] = track(increment)
+
+        assert getattr(tracked_increment, "__annotate__", 42) is annotate_value
+        assert getattr(tracked_increment, "__wrapped__", None) is increment
+        assert signature(tracked_increment) == signature(increment)
+
+
 def test_track_forwards_positional_and_keyword_arguments() -> None:
     readings: Iterator[float] = iter((1.0, 2.0))
     reports: list[Timing] = []
@@ -547,6 +579,7 @@ def test_track_preserves_function_metadata_and_signature() -> None:
         return f"Hello, {name}{punctuation}"
 
     greet.__dict__["category"] = "salutation"
+    greet_annotate: object = getattr(greet, "__annotate__", None)
     tracked_greet: Callable[[str, str], str] = track(
         clock=readings.__next__,
         reporter=reports.append,
@@ -557,6 +590,8 @@ def test_track_preserves_function_metadata_and_signature() -> None:
     assert tracked_greet.__qualname__ == greet.__qualname__
     assert tracked_greet.__doc__ == "Return a greeting."
     assert tracked_greet.__annotations__ == greet.__annotations__
+    if callable(greet_annotate):
+        assert getattr(tracked_greet, "__annotate__", None) is greet_annotate
     assert getattr(tracked_greet, "__wrapped__", None) is greet
     assert signature(tracked_greet) == signature(greet)
     assert getattr(tracked_greet, "category", None) == "salutation"

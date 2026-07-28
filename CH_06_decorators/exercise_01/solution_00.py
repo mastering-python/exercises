@@ -38,6 +38,8 @@ def snapshot_wrapper_metadata(
             return value is None or isinstance(value, str)
         if attribute == "__annotations__":
             return isinstance(value, dict)
+        if attribute == "__annotate__":
+            return value is None or callable(value)
         if attribute == "__type_params__":
             return isinstance(value, tuple)
         return False
@@ -60,11 +62,20 @@ def snapshot_wrapper_metadata(
             return type_name
         return "callable"
 
-    assignment_attributes_list: list[str] = [
+    runtime_assignment_attributes: list[str] = [
         str(attribute) for attribute in WRAPPER_ASSIGNMENTS
     ]
-    if "__type_params__" not in assignment_attributes_list:
-        assignment_attributes_list.append("__type_params__")
+    managed_attributes: tuple[str, ...] = (
+        "__annotations__",
+        "__annotate__",
+        "__type_params__",
+    )
+    assignment_attributes_list: list[str] = [
+        attribute
+        for attribute in runtime_assignment_attributes
+        if attribute not in managed_attributes
+    ]
+    assignment_attributes_list.extend(managed_attributes)
     assignment_attributes: tuple[str, ...] = tuple(assignment_attributes_list)
     reserved_attributes: set[str] = {
         *assignment_attributes,

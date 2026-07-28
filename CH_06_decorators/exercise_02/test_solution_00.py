@@ -153,6 +153,8 @@ def test_configured_form_preserves_arguments_result_metadata_and_signature() -> 
     type_parameters: tuple[object, ...] = (str,)
     greet.__dict__["__type_params__"] = type_parameters
     greet.__dict__["category"] = "salutation"
+    greet_annotate: object = getattr(greet, "__annotate__", None)
+    greet_type_parameters: object = getattr(greet, "__type_params__", None)
     tracked_greet: TrackedCallable[..., str] = track(
         label="greeting",
         clock=readings.__next__,
@@ -165,7 +167,9 @@ def test_configured_form_preserves_arguments_result_metadata_and_signature() -> 
     assert getattr(tracked_greet, "__qualname__", None) == greet.__qualname__
     assert getattr(tracked_greet, "__doc__", None) == "Return a greeting."
     assert getattr(tracked_greet, "__annotations__", None) == greet.__annotations__
-    assert getattr(tracked_greet, "__type_params__", None) == type_parameters
+    if callable(greet_annotate):
+        assert getattr(tracked_greet, "__annotate__", None) is greet_annotate
+    assert getattr(tracked_greet, "__type_params__", None) == greet_type_parameters
     assert getattr(tracked_greet, "category", None) == "salutation"
     assert getattr(tracked_greet, "__wrapped__", None) is greet
     assert signature(tracked_greet) == signature(greet)
@@ -361,6 +365,7 @@ def test_malformed_metadata_callable_inherits_safe_wrapping() -> None:
     (
         ("__module__", 42),
         ("__doc__", 42),
+        ("__annotate__", 42),
         ("__type_params__", 42),
     ),
 )

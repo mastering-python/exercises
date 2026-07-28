@@ -21,9 +21,10 @@ the tools, synchronize every dependency group, and install the Git hooks:
 Running exercises
 -----------------
 
-Each ``exercise_NN`` directory contains the exercise question, an explanation,
-the canonical answer in ``solution_00.py``, dependency notes, and tests. Run an
-answer or its tests from the repository root. For example:
+Each ``exercise_NN`` directory contains its exact question, a concise
+explanation, the canonical answer in ``solution_00.py``, its dependencies, and
+focused tests. Run an answer or its tests from the repository root. For
+example:
 
 .. code-block:: console
 
@@ -74,6 +75,8 @@ environment without network access:
 Contributing
 ------------
 
-Alternative solutions are welcome. Add an alternative as the next available
-``solution_NN.py`` instead of replacing ``solution_00.py``. Before submitting,
-run the formatting, linting, type-checking, and test commands above.
+Alternative solutions are welcome and use the next available
+``solution_NN.py``. Keep canonical files, tests, and exercise documentation
+unchanged unless correcting the reference answer. All submitted Python code
+must be formatted, linted, typed, and tested. The commands above run these
+checks.

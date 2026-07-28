@@ -167,6 +167,7 @@ def test_configured_form_preserves_arguments_result_metadata_and_signature() -> 
     assert getattr(tracked_greet, "__qualname__", None) == greet.__qualname__
     assert getattr(tracked_greet, "__doc__", None) == "Return a greeting."
     assert getattr(tracked_greet, "__annotations__", None) == greet.__annotations__
+    assert hasattr(tracked_greet, "__annotate__") is hasattr(greet, "__annotate__")
     if callable(greet_annotate):
         assert getattr(tracked_greet, "__annotate__", None) is greet_annotate
     assert getattr(tracked_greet, "__type_params__", None) == greet_type_parameters

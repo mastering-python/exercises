@@ -8,6 +8,7 @@ from typing import ParamSpec, TypeVar, cast, overload
 
 P = ParamSpec("P")
 R = TypeVar("R")
+_MISSING: object = object()
 
 
 @dataclass(frozen=True)
@@ -46,9 +47,9 @@ def snapshot_wrapper_metadata(
 
     def read_attribute(attribute: str) -> object:
         try:
-            return getattr(function, attribute, None)
+            return getattr(function, attribute, _MISSING)
         except Exception:
-            return None
+            return _MISSING
 
     def callable_type_name() -> str:
         try:
@@ -98,7 +99,7 @@ def snapshot_wrapper_metadata(
             value = function_name
         else:
             value = read_attribute(attribute)
-        if valid_assignment(attribute, value):
+        if value is not _MISSING and valid_assignment(attribute, value):
             assigned[attribute] = value
 
     custom_attributes: dict[str, object] = {}

@@ -525,6 +525,18 @@ def test_track_preserves_valid_type_params_metadata() -> None:
     assert signature(tracked_increment) == signature(increment)
 
 
+def test_track_preserves_annotate_attribute_presence() -> None:
+    def increment(value: int) -> int:
+        return value + 1
+
+    tracked_increment: Callable[[int], int] = track(increment)
+
+    assert hasattr(tracked_increment, "__annotate__") is hasattr(
+        increment,
+        "__annotate__",
+    )
+
+
 def test_track_preserves_valid_annotate_metadata() -> None:
     def annotate(format_value: int) -> dict[str, object]:
         return {"format": format_value}

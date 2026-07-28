@@ -3,6 +3,7 @@
 import importlib
 import readline
 import rlcompleter
+import sys
 from collections.abc import Iterator, Mapping
 from types import ModuleType, SimpleNamespace
 from typing import ClassVar, cast
@@ -121,6 +122,7 @@ def test_skips_nested_huge_integer_keys_that_cannot_be_rendered() -> None:
 
 
 def test_skips_deep_tuple_keys_and_continues_to_safe_keys() -> None:
+    original_limit: int = sys.getrecursionlimit()
     deep_key: object = 0
     _depth: int
     for _depth in range(500):
@@ -128,7 +130,11 @@ def test_skips_deep_tuple_keys_and_continues_to_safe_keys() -> None:
     values: dict[object, object] = {deep_key: "too deep", "safe": 1}
     completer: Completer = Completer({"values": values})
 
-    matches: list[str] = list(completer.item_matches("values["))
+    try:
+        sys.setrecursionlimit(3000)
+        matches: list[str] = list(completer.item_matches("values["))
+    finally:
+        sys.setrecursionlimit(original_limit)
 
     assert matches == ["values['safe']"]
 

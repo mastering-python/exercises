@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from typing import Final, cast
 
 MAX_MATCHES: Final[int] = 25
+MAX_LITERAL_NESTING: Final[int] = 64
 _UNRESOLVED: Final[object] = object()
 _KEYWORDS: Final[tuple[str, ...]] = tuple(keyword.kwlist)
 _BUILTINS: Final[tuple[tuple[str, object], ...]] = tuple(
@@ -20,7 +21,7 @@ _BUILTINS: Final[tuple[tuple[str, object], ...]] = tuple(
 )
 
 
-def _is_safe_literal(value: object) -> bool:
+def _is_safe_literal(value: object, remaining_depth: int = MAX_LITERAL_NESTING) -> bool:
     value_type: type[object] = type(value)
     if value_type in (str, bytes, int, bool, type(None)):
         return True
@@ -31,8 +32,10 @@ def _is_safe_literal(value: object) -> bool:
         complex_number: complex = cast(complex, value)
         return math.isfinite(complex_number.real) and math.isfinite(complex_number.imag)
     if value_type is tuple:
+        if remaining_depth <= 0:
+            return False
         items: tuple[object, ...] = cast(tuple[object, ...], value)
-        return all(_is_safe_literal(item) for item in items)
+        return all(_is_safe_literal(item, remaining_depth - 1) for item in items)
     return False
 
 

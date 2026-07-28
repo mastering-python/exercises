@@ -28,7 +28,11 @@ raises ``AttributeError`` naming the property.
 
 The descriptor rejects access before ``__set_name__`` and rejects binding one
 descriptor to two different names.  Instances without a ``__dict__`` are not
-supported and raise a clear ``TypeError``.  Function metadata is retained.
+supported and raise a clear ``TypeError``.  Standard callable metadata is
+retained when present and well formed, including ``__type_params__`` on newer
+Python versions.  Arbitrary callable attributes are not copied, so they cannot
+replace descriptor state or helpers.  Partials and slotted callable objects
+remain valid inputs.
 
 This teaching implementation provides no locking or thread-safety guarantee.
 Concurrent access may calculate the value more than once.

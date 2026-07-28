@@ -1,7 +1,9 @@
 """Tests for the recalculable cached-property descriptor."""
 
+import sys
 from collections.abc import Callable
-from typing import NoReturn
+from functools import partial
+from typing import NoReturn, cast
 
 import pytest
 
@@ -146,15 +148,155 @@ def test_function_metadata_is_preserved() -> None:
         """Return the answer."""
         return 42
 
-    original.category = "answer"  # type: ignore[attr-defined]
     descriptor: CachedProperty[object, int] = CachedProperty(original)
 
     assert descriptor.__name__ == "original"
+    assert descriptor.__qualname__ == original.__qualname__
     assert descriptor.__doc__ == "Return the answer."
     assert descriptor.__module__ == original.__module__
     assert descriptor.__annotations__ == original.__annotations__
     assert descriptor.__wrapped__ is original
-    assert descriptor.category == "answer"  # type: ignore[attr-defined]
+
+
+def test_valid_type_parameters_are_preserved_when_present() -> None:
+    def original(self: object) -> int:
+        return 42
+
+    type_parameters: tuple[object, ...] = (object(),)
+    original.__type_params__ = type_parameters  # type: ignore[attr-defined]
+
+    descriptor: CachedProperty[object, int] = CachedProperty(original)
+
+    assert descriptor.__type_params__ == type_parameters
+
+
+def test_native_type_parameters_are_preserved_on_supported_python() -> None:
+    if sys.version_info < (3, 12):
+        pytest.skip("generic function syntax requires Python 3.12 or newer")
+
+    namespace: dict[str, object] = {}
+    source: str = "def generic[T](self: object) -> object:\n    return self\n"
+    exec(source, namespace)
+    function: Callable[[object], object] = cast(
+        Callable[[object], object],
+        namespace["generic"],
+    )
+
+    descriptor: CachedProperty[object, object] = CachedProperty(function)
+    type_parameters: object = object.__getattribute__(function, "__type_params__")
+
+    assert isinstance(type_parameters, tuple)
+    assert descriptor.__type_params__ == type_parameters
+
+
+def test_malformed_type_parameters_are_ignored() -> None:
+    class MalformedTypeParameters:
+        def __call__(self, instance: object) -> int:
+            return 42
+
+        def __getattribute__(self, attribute: str) -> object:
+            if attribute == "__type_params__":
+                return ["not", "a", "tuple"]
+            return object.__getattribute__(self, attribute)
+
+    function: Callable[[object], int] = MalformedTypeParameters()
+    descriptor: CachedProperty[object, int] = CachedProperty(function)
+
+    assert "__type_params__" not in vars(descriptor)
+
+
+def test_malformed_standard_metadata_is_ignored() -> None:
+    class MalformedMetadata:
+        def __call__(self, instance: object) -> int:
+            return 42
+
+        def __getattribute__(self, attribute: str) -> object:
+            malformed: dict[str, object] = {
+                "__module__": 1,
+                "__name__": 2,
+                "__qualname__": 3,
+                "__doc__": 4,
+                "__annotations__": (),
+                "__type_params__": [],
+            }
+            if attribute in malformed:
+                return malformed[attribute]
+            return object.__getattribute__(self, attribute)
+
+    function: Callable[[object], int] = MalformedMetadata()
+    descriptor: CachedProperty[object, int] = CachedProperty(function)
+    copied: dict[str, object] = vars(descriptor)
+
+    for attribute in (
+        "__module__",
+        "__name__",
+        "__qualname__",
+        "__doc__",
+        "__annotations__",
+        "__type_params__",
+    ):
+        assert attribute not in copied
+
+    assert descriptor.__wrapped__ is function
+
+
+def test_partial_is_a_supported_callable() -> None:
+    class Example:
+        pass
+
+    def render(prefix: str, instance: Example) -> str:
+        return f"{prefix}:{type(instance).__name__}"
+
+    function: Callable[[Example], str] = partial(render, "partial")
+    descriptor: CachedProperty[Example, str] = CachedProperty(function)
+    descriptor.__set_name__(Example, "rendered")
+    example: Example = Example()
+
+    assert descriptor.__get__(example, Example) == "partial:Example"
+
+
+def test_slotted_callable_is_supported() -> None:
+    class Example:
+        pass
+
+    class Render:
+        __slots__: tuple[()] = ()
+
+        def __call__(self, instance: Example) -> str:
+            return type(instance).__name__
+
+    function: Callable[[Example], str] = Render()
+    descriptor: CachedProperty[Example, str] = CachedProperty(function)
+    descriptor.__set_name__(Example, "rendered")
+    example: Example = Example()
+
+    assert descriptor.__get__(example, Example) == "Example"
+
+
+def test_callable_attributes_cannot_shadow_descriptor_internals() -> None:
+    class Example:
+        pass
+
+    def original(instance: Example) -> str:
+        return type(instance).__name__
+
+    attributes: dict[str, object] = vars(original)
+    attributes["_bound_name"] = "shadowed"
+    attributes["_instance_storage"] = "shadowed"
+    attributes["function"] = "shadowed"
+    attributes["name"] = "shadowed"
+
+    descriptor: CachedProperty[Example, str] = CachedProperty(original)
+
+    assert descriptor.function is original
+    assert descriptor.name is None
+    assert "_bound_name" not in vars(descriptor)
+    assert "_instance_storage" not in vars(descriptor)
+
+    descriptor.__set_name__(Example, "rendered")
+
+    assert descriptor.name == "rendered"
+    assert descriptor.__get__(Example(), Example) == "Example"
 
 
 def test_exception_is_not_cached() -> None:
@@ -187,4 +329,5 @@ def test_public_constructor_accepts_a_typed_callable() -> None:
     function: Callable[[Example], str] = Example.value
     descriptor: CachedProperty[Example, str] = CachedProperty(function)
 
-    assert descriptor.func is function
+    assert descriptor.function is function
+    assert descriptor.name is None

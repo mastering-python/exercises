@@ -11,8 +11,7 @@ ReturnValue = TypeVar("ReturnValue")
 
 class _ClassMethodDescriptor(Protocol):
     @property
-    def __func__(self) -> Method:
-        ...
+    def __func__(self) -> Method: ...
 
 
 def _wrapped_namespace(

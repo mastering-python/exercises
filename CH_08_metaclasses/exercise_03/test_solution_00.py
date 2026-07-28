@@ -11,8 +11,7 @@ from .solution_00 import Method, SomeClass, WrappingMeta, print_call
 
 class _ClassMethodDescriptor(Protocol):
     @property
-    def __func__(self) -> Method:
-        ...
+    def __func__(self) -> Method: ...
 
 
 def recording_wrapper(
@@ -230,10 +229,7 @@ def test_public_example_class_uses_print_call(
 ) -> None:
     SomeClass().some_method()
 
-    assert capsys.readouterr().out == (
-        "calling some_method\n"
-        "some_method() called\n"
-    )
+    assert capsys.readouterr().out == "calling some_method\nsome_method() called\n"
 
 
 def test_module_import_is_silent() -> None:

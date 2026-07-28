@@ -4,13 +4,13 @@ Exercise 3: wrapping methods
 Question
 --------
 
-3. Build a metaclass that wraps every method with a decorator (could be
+.. code-block:: text
+
+   3. Build a metaclass that wraps every method with a decorator (could be
    useful for logging/de- bugging purposes), something with a signature like
    this:
 
-   .. code-block:: python
-
-      class SomeClass(metaclass=WrappingMeta, wrapper=some_wrapper):
+       class SomeClass(metaclass=WrappingMeta, wrapper=some_wrapper):
 
 Solution
 --------

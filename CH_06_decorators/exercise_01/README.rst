@@ -15,6 +15,10 @@ call such as ``track(function, label=..., clock=..., reporter=...)``. Each call
 produces a frozen ``Timing`` value containing its label, elapsed seconds, and
 failure state.
 
+An explicit ``label`` always wins. Otherwise, the default label is a string
+``function.__name__`` when available, or ``type(function).__name__`` for
+callables such as ``functools.partial`` instances.
+
 The clock and reporter are injectable. A deterministic clock makes elapsed
 time straightforward to test without sleeping, while a custom reporter can
 store or publish timings without changing the decorator. The default clock is

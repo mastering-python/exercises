@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterator
+from functools import partial
 from inspect import signature
 
 import pytest
@@ -173,6 +174,58 @@ def test_default_label_is_the_function_name() -> None:
     calculate()
 
     assert reports == [Timing(label="calculate", elapsed=2.0, failed=False)]
+
+
+def test_default_label_falls_back_to_callable_type_name(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    def multiply(left: int, right: int) -> int:
+        return left * right
+
+    double: Callable[[int], int] = partial(multiply, 2)
+    tracked_double: TrackedCallable[[int], int] = track(
+        double,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+
+    result: int = tracked_double(5)
+    tracked_double.print_stats()
+
+    assert result == 10
+    assert tracked_double.stats == TimingStats(1, 2.0, 2.0, 2.0)
+    assert reports == [Timing(label="partial", elapsed=2.0, failed=False)]
+    assert capsys.readouterr().out == (
+        "partial stats: count=1, total=2.000000s, minimum=2.000000s, "
+        "maximum=2.000000s, average=2.000000s\n"
+    )
+
+
+def test_explicit_label_wins_for_callable_with_non_string_name() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class Increment:
+        __name__: int = 42
+
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    tracked_increment: TrackedCallable[[int], int] = track(
+        Increment(),
+        label="increment",
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert tracked_increment.stats == TimingStats(1, 2.0, 2.0, 2.0)
+    assert reports == [Timing(label="increment", elapsed=2.0, failed=False)]
 
 
 def test_reporter_failure_after_success_propagates_after_recording() -> None:

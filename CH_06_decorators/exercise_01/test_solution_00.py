@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterator
+from functools import partial
 from inspect import signature
 
 import pytest
@@ -185,6 +186,48 @@ def test_track_uses_function_name_as_default_label() -> None:
     calculate()
 
     assert reports == [Timing(label="calculate", elapsed=2.0, failed=False)]
+
+
+def test_track_uses_callable_type_as_default_label_without_name() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    def add(left: int, right: int) -> int:
+        return left + right
+
+    add_ten: Callable[[int], int] = partial(add, 10)
+    tracked_add_ten: Callable[[int], int] = track(
+        add_ten,
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+
+    result: int = tracked_add_ten(5)
+
+    assert result == 15
+    assert reports == [Timing(label="partial", elapsed=2.0, failed=False)]
+
+
+def test_track_uses_callable_type_when_name_is_not_a_string() -> None:
+    readings: Iterator[float] = iter((7.0, 9.0))
+    reports: list[Timing] = []
+
+    class Increment:
+        __name__: int = 42
+
+        def __call__(self, value: int) -> int:
+            return value + 1
+
+    tracked_increment: Callable[[int], int] = track(
+        Increment(),
+        clock=readings.__next__,
+        reporter=reports.append,
+    )
+
+    result: int = tracked_increment(5)
+
+    assert result == 6
+    assert reports == [Timing(label="Increment", elapsed=2.0, failed=False)]
 
 
 def test_track_forwards_positional_and_keyword_arguments() -> None:

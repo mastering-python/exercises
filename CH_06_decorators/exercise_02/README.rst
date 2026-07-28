@@ -12,6 +12,10 @@ Solution
 function has its own mutable ``TimingStats`` instance at ``function.stats`` and
 a zero-argument ``function.print_stats()`` method.  The aggregates use seconds:
 
+An explicit ``label`` always wins. Otherwise, the default label is a string
+``function.__name__`` when available, or ``type(function).__name__`` for
+callables such as ``functools.partial`` instances.
+
 * ``count`` is the number of calls with a completed duration.
 * ``total`` is the sum of those durations.
 * ``minimum`` and ``maximum`` are the shortest and longest durations.

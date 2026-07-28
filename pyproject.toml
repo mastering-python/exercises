@@ -34,6 +34,7 @@ scientific = [
     "numpy>=1.26",
     "pandas>=2.2",
     "pillow>=11",
+    "xarray>=2025.6.1",
 ]
 nlp = [
     "spacy>=3.8.13,<3.8.14",

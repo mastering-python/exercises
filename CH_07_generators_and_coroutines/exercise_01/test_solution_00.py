@@ -5,6 +5,7 @@ import sys
 from collections.abc import Iterator
 from itertools import islice as stdlib_islice
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -43,6 +44,25 @@ class RaisingIterable:
         self.iterations += 1
         yield 1
         raise self.error
+
+
+class FailOnIteration:
+    def __init__(self) -> None:
+        self.iterations: int = 0
+
+    def __iter__(self) -> Iterator[int]:
+        self.iterations += 1
+        raise AssertionError("source must not be iterated")
+
+
+class IndexCompatible:
+    def __init__(self, value: int) -> None:
+        self.value: int = value
+        self.calls: int = 0
+
+    def __index__(self) -> int:
+        self.calls += 1
+        return self.value
 
 
 @pytest.mark.parametrize(
@@ -116,6 +136,68 @@ def test_zero_step_raises_immediately_without_iterating_source() -> None:
 
 def test_step_defaults_to_one() -> None:
     assert list(islice(range(8), 2, 6)) == [2, 3, 4, 5]
+
+
+@pytest.mark.parametrize(
+    ("start", "stop", "step"),
+    [
+        (cast(int, 1.5), 4, 1),
+        (4, cast(int, -0.5), -1),
+        (4, 0, cast(int, -1.5)),
+    ],
+)
+def test_invalid_indices_fail_before_source_iteration(
+    start: int,
+    stop: int,
+    step: int,
+) -> None:
+    source: FailOnIteration = FailOnIteration()
+
+    with pytest.raises(TypeError):
+        islice(source, start, stop, step)
+
+    assert source.iterations == 0
+
+
+@pytest.mark.parametrize(
+    ("start_value", "stop_value", "step_value", "expected"),
+    [
+        (1, 7, 2, [1, 3, 5]),
+        (7, 1, -2, [7, 5, 3]),
+    ],
+)
+def test_index_compatible_arguments_are_normalized(
+    start_value: int,
+    stop_value: int,
+    step_value: int,
+    expected: list[int],
+) -> None:
+    start: IndexCompatible = IndexCompatible(start_value)
+    stop: IndexCompatible = IndexCompatible(stop_value)
+    step: IndexCompatible = IndexCompatible(step_value)
+
+    result: list[int] = list(
+        islice(
+            range(9),
+            cast(int, start),
+            cast(int, stop),
+            cast(int, step),
+        )
+    )
+
+    assert result == expected
+    assert (start.calls, stop.calls, step.calls) == (1, 1, 1)
+
+
+def test_index_compatible_zero_step_fails_before_source_iteration() -> None:
+    source: FailOnIteration = FailOnIteration()
+    step: IndexCompatible = IndexCompatible(0)
+
+    with pytest.raises(ValueError):
+        islice(source, 0, 3, cast(int, step))
+
+    assert step.calls == 1
+    assert source.iterations == 0
 
 
 @pytest.mark.parametrize(

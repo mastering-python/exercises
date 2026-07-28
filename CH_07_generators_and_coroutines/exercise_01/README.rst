@@ -9,10 +9,15 @@ Question
 Solution
 --------
 
-``islice(iterable, start, stop, step=1)`` returns an iterator. For a positive
-``step``, it delegates directly to ``itertools.islice``. The source remains
-streaming and lazy: values are consumed only as the result requests them, and
-the standard library's restrictions on negative bounds still apply.
+``islice(iterable, start, stop, step=1)`` returns an iterator. It first
+normalizes all three slice arguments through ``operator.index`` without
+touching the source. Integer-compatible objects are accepted, while floats and
+other invalid indices raise ``TypeError`` immediately.
+
+For a positive ``step``, the function delegates directly to
+``itertools.islice``. The source remains streaming and lazy: values are
+consumed only as the result requests them, and the standard library's
+restrictions on negative bounds still apply.
 
 A zero ``step`` raises ``ValueError`` immediately. For a negative ``step``, the
 function materializes the source exactly once, applies an ordinary list slice,

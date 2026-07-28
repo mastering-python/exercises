@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable, Iterator
 from itertools import islice as stdlib_islice
+from operator import index
 from typing import TypeVar
 
 T = TypeVar("T")
@@ -19,13 +20,22 @@ def islice(
     Negative steps first materialize the iterable, which must therefore be
     finite, and then apply ordinary list-slice semantics.
     """
-    if step == 0:
+    normalized_start: int = index(start)
+    normalized_stop: int = index(stop)
+    normalized_step: int = index(step)
+
+    if normalized_step == 0:
         raise ValueError("step must not be zero")
-    if step > 0:
-        return stdlib_islice(iterable, start, stop, step)
+    if normalized_step > 0:
+        return stdlib_islice(
+            iterable,
+            normalized_start,
+            normalized_stop,
+            normalized_step,
+        )
 
     values: list[T] = list(iterable)
-    return iter(values[start:stop:step])
+    return iter(values[normalized_start:normalized_stop:normalized_step])
 
 
 def main() -> None:

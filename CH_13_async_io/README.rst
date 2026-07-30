@@ -1,6 +1,5 @@
-Chapter 13 - async io
-=======================================================================================================================
+Chapter 13 - async I/O
+======================
 
-1. Try to create a `asyncio` base class that automatically registers all instances for easy closing/destructuring when you are done
-2. Create an `asyncio` wrapper class for a synchronous process such as file or network operations using executors
-
+1. `Registered resources <exercise_01/>`_
+2. `Executor-backed synchronous operations <exercise_02/>`_

@@ -1,76 +1,119 @@
-# Try to create a `asyncio` base class that automatically
-# registers all instances for easy closing/destructuring when you
-# are done
+"""Manage explicitly registered asynchronous resources."""
+
+from __future__ import annotations
+
 import abc
 import asyncio
+from types import TracebackType
+from typing import ClassVar
+
+
+class CloseFailures(RuntimeError):
+    """Report every ordinary exception raised during one close pass."""
+
+    def __init__(self, failures: tuple[Exception, ...]) -> None:
+        self.failures: tuple[Exception, ...] = failures
+        super().__init__(f"{len(failures)} resource(s) failed to close")
 
 
 class AsyncBase(abc.ABC):
-    _instances = []
+    """Base class for resources with deterministic asynchronous cleanup."""
 
-    def __init__(self):
-        self._instances.append(self)
+    _instances: ClassVar[list[AsyncBase]] = []
 
-    async def close(self):
-        raise NotImplementedError
+    def __init__(self) -> None:
+        self._closed: bool = False
+        self._close_task: asyncio.Task[None] | None = None
+        AsyncBase._instances.append(self)
 
+    @property
+    def closed(self) -> bool:
+        """Return whether cleanup completed successfully."""
+        return self._closed
 
-class AsyncManager(AsyncBase):
-    # Use a separate class for the managing of the instances so
-    # we don't pollute the namespace of the base class
+    @abc.abstractmethod
+    async def _close(self) -> None:
+        """Release this resource's asynchronous state."""
+
+    async def close(self) -> None:
+        """Close once, retaining failed resources for a later retry."""
+        if self._closed:
+            return
+
+        close_task: asyncio.Task[None] | None = self._close_task
+        if close_task is None:
+            close_task = asyncio.create_task(self._close_once())
+            self._close_task = close_task
+        try:
+            await close_task
+        finally:
+            if close_task.done() and self._close_task is close_task:
+                self._close_task = None
+
+    async def _close_once(self) -> None:
+        await self._close()
+        self._closed = True
+        AsyncBase._unregister(self)
 
     @classmethod
-    async def close(cls):
-        # Make sure to clear the list of instances while closing
-        while cls._instances:
-            await cls._instances.pop().close()
+    def pending_count(cls: type[AsyncBase]) -> int:
+        """Return the number of registered resources awaiting cleanup."""
+        return len(AsyncBase._instances)
 
-    # Support `async with` syntax as well
-    async def __aenter__(self):
+    @classmethod
+    async def close_all(cls: type[AsyncBase]) -> None:
+        """Attempt a LIFO close pass and aggregate ordinary exceptions."""
+        failures: list[Exception] = []
+        resources: tuple[AsyncBase, ...] = tuple(AsyncBase._instances)
+
+        for resource in reversed(resources):
+            try:
+                await resource.close()
+            except Exception as error:
+                failures.append(error)
+
+        if failures:
+            raise CloseFailures(tuple(failures))
+
+    @staticmethod
+    def _unregister(resource: AsyncBase) -> None:
+        for index, registered in enumerate(AsyncBase._instances):
+            if registered is resource:
+                del AsyncBase._instances[index]
+                return
+
+
+class AsyncManager:
+    """Close all registered resources when leaving an async context."""
+
+    async def __aenter__(self) -> AsyncManager:
         return self
 
-    async def __aexit__(self, exc_type, exc, tb):
-        await self.close()
+    async def __aexit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool:
+        del exception_type, exception, traceback
+        await AsyncBase.close_all()
+        return False
 
 
-class A(AsyncBase):
-    def __init__(self):
+class DemoResource(AsyncBase):
+    def __init__(self, name: str) -> None:
+        self._name: str = name
         super().__init__()
-        print('A.__init__')
 
-    async def close(self):
-        print('A.close')
-
-
-class B(AsyncBase):
-    def __init__(self):
-        super().__init__()
-        print('B.__init__')
-
-    async def close(self):
-        print('B.close')
+    async def _close(self) -> None:
+        print(f"closed {self._name}")
 
 
-async def main():
-    print('Using close method directly')
-
-    A()
-    B()
-    await AsyncManager.close()
-
-    print()
-
-
-async def main_with():
-    print('Using async with')
-
+async def main() -> None:
+    """Demonstrate automatic LIFO cleanup."""
     async with AsyncManager():
-        A()
-        B()
-
-    print()
+        DemoResource("demo")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())
-    asyncio.run(main_with())

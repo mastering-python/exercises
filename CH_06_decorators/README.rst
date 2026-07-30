@@ -1,10 +1,17 @@
 Chapter 6 - decorators
-=======================================================================================================================
+======================
 
-1. Extend the `track` function to monitor execution time.
-2. Extend the `track` function with min/max/average execution time and call count.
-3. Modify the memoization function to function with unhashable types.
-4. Modify the memoization function to have a cache per function instead of a global one.
-5. Create a version of `functools.cached_property` that can be recalculated as needed.
-6. Create a single-dispatch decorator that considers all or a configurable number of arguments instead of only the first one.
-7. Enhance the `type_check` decorator to include additional checks such as requiring a number to be greater than or less than a given value.
+1. `Extend ``track`` to monitor execution time.
+   <exercise_01/README.rst>`_
+2. `Extend ``track`` with minimum, maximum, and average execution time and a
+   call count. <exercise_02/README.rst>`_
+3. `Modify memoization to support functions with unhashable arguments.
+   <exercise_03/README.rst>`_
+4. `Modify memoization to keep a cache per function instead of one global
+   cache. <exercise_04/README.rst>`_
+5. `Create a version of ``functools.cached_property`` that can be recalculated
+   as needed. <exercise_05/README.rst>`_
+6. `Create a single-dispatch decorator that considers a configurable number
+   of arguments instead of only the first one. <exercise_06/README.rst>`_
+7. `Enhance ``type_check`` with checks requiring a number to be greater or
+   less than a given value. <exercise_07/README.rst>`_

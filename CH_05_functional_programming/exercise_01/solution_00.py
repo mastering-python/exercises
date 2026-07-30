@@ -1,29 +1,68 @@
-# Implement the quicksort algorithm.
-import random
+"""Implement the quicksort algorithm."""
 
-# one-liner approach
-qs = lambda xs: xs if len(xs) <= 1 else qs(
-    [x for x in xs[1:] if x < xs[0]]) + [xs[0]] + qs(
-    [x for x in xs[1:] if x >= xs[0]])
+from collections.abc import Iterable
+from typing import Any, Protocol, TypeVar, cast
 
-
-# more verbose approach
-def quicksort(xs):
-    if len(xs) <= 1:
-        return xs
-    else:
-        left = quicksort([x for x in xs[1:] if x < xs[0]])
-        right = quicksort([x for x in xs[1:] if x >= xs[0]])
-        middle = [xs[0]]
-        return left + middle + right
+T_contra = TypeVar("T_contra", contravariant=True)
 
 
-def main():
-    # test
-    xs = random.sample(range(1000), 100)
-    assert quicksort(xs) == sorted(xs)
-    assert qs(xs) == sorted(xs)
+class SupportsLessThan(Protocol[T_contra]):
+    def __lt__(self, other: T_contra, /) -> bool: ...
 
 
-if __name__ == '__main__':
+class SupportsGreaterThan(Protocol[T_contra]):
+    def __gt__(self, other: T_contra, /) -> bool: ...
+
+
+T = TypeVar(
+    "T",
+    bound=SupportsLessThan[Any] | SupportsGreaterThan[Any],
+)
+
+
+def _quicksort(values: list[T]) -> list[T]:
+    if len(values) <= 1:
+        return values.copy()
+
+    iterator = iter(values)
+    pivot: T = next(iterator)
+    lower: list[T] = []
+    upper: list[T] = []
+    for value in iterator:
+        comparable: SupportsLessThan[Any] = cast(SupportsLessThan[Any], value)
+        if comparable < pivot:
+            lower.append(value)
+        else:
+            upper.append(value)
+
+    return [*_quicksort(lower), pivot, *_quicksort(upper)]
+
+
+def quicksort(values: Iterable[T]) -> list[T]:
+    """Return a fresh sorted list after consuming the iterable once.
+
+    Mutable input containers are not structurally modified, and the algorithm
+    directly mutates no elements.
+    """
+    materialized: list[T] = list(values)
+    return _quicksort(materialized)
+
+
+def qs(values: Iterable[T]) -> list[T]:
+    """Return a fresh sorted list after consuming the iterable once.
+
+    Mutable input containers are not structurally modified, and this
+    compatibility wrapper directly mutates no elements.
+    """
+    return quicksort(values)
+
+
+def main() -> None:
+    values: list[int] = [8, 3, 5, 3, 1]
+    expected: list[int] = [1, 3, 3, 5, 8]
+    assert quicksort(values) == expected
+    assert qs(values) == expected
+
+
+if __name__ == "__main__":
     main()

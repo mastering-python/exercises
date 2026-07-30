@@ -1,29 +1,46 @@
-# Write a groupby function that returns lists of results instead of 
-# generators.
+"""Group values into reusable lists."""
 
-import pprint
+from collections.abc import Callable, Hashable, Iterable
+from typing import TypeVar, overload
+
+H = TypeVar("H", bound=Hashable)
+K = TypeVar("K", bound=Hashable)
+T = TypeVar("T")
 
 
-def groupby(iterable, key=None):
-    '''
-    Return a dictionary of lists of items grouped by the key function.
+@overload
+def groupby(iterable: Iterable[H], key: None = None) -> dict[H, list[H]]: ...
 
-    Note that as opposed to the itertools.groupby function, this function
-    does not require the iterable to be sorted.
-    '''
+
+@overload
+def groupby(iterable: Iterable[T], key: Callable[[T], K]) -> dict[K, list[T]]: ...
+
+
+def groupby(
+    iterable: Iterable[T], key: Callable[[T], K] | None = None
+) -> dict[K, list[T]] | dict[T, list[T]]:
+    """Return input items collected into lists by their group key."""
+    if key is not None and not callable(key):
+        raise TypeError("key must be callable or None")
+
+    item: T
     if key is None:
-        key = lambda x: x
-    groups = {}
+        identity_groups: dict[T, list[T]] = {}
+        for item in iterable:
+            identity_groups.setdefault(item, []).append(item)
+        return identity_groups
+
+    keyed_groups: dict[K, list[T]] = {}
     for item in iterable:
-        groups.setdefault(key(item), []).append(item)
-    return groups
+        group_key: K = key(item)
+        keyed_groups.setdefault(group_key, []).append(item)
+    return keyed_groups
 
 
-def main():
-    # Demo data from the itertools docs
-    pprint.pprint(groupby('AAAABBBCCDAABBB'))
-    pprint.pprint(groupby('AAAABBBCCD'))
+def main() -> None:
+    """Print a small identity-grouping demonstration."""
+    print(groupby("ABACA"))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

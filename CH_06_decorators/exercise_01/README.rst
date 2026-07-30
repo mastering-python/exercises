@@ -1,0 +1,57 @@
+Exercise 1: execution timing
+============================
+
+Question
+--------
+
+1. Extend the `track` function to monitor execution time.
+
+Solution
+--------
+
+``track`` supports ``@track``, a configured
+``@track(label=..., clock=..., reporter=...)`` form, and a configured direct
+call such as ``track(function, label=..., clock=..., reporter=...)``. Each call
+produces a frozen ``Timing`` value containing its label, elapsed seconds, and
+failure state.
+
+An explicit ``label`` always wins. Otherwise, the default label is a string
+``function.__name__`` when available, or ``type(function).__name__`` for
+callables such as ``functools.partial`` instances.
+
+The clock and reporter are injectable. A deterministic clock makes elapsed
+time straightforward to test without sleeping, while a custom reporter can
+store or publish timings without changing the decorator. The default clock is
+the monotonic ``time.perf_counter``, so wall-clock adjustments do not distort
+elapsed time. The default reporter prints the result.
+
+The starting clock is read before the target runs. If that read fails, the
+target does not run and the clock exception propagates. After a successful
+target call, ending-clock and reporter failures propagate. If the target
+raises, timing is still attempted with ``failed=True``; an ending-clock or
+reporter failure is suppressed so the original target exception remains the
+one propagated to the caller.
+
+Dependencies
+------------
+
+The solution has no third-party runtime dependencies and requires Python 3.10
+or newer. Tests use the repository's ``pytest`` development dependency.
+
+Run the guarded demonstration:
+
+.. code-block:: console
+
+   uv run python -m CH_06_decorators.exercise_01.solution_00
+
+Run the focused tests:
+
+.. code-block:: console
+
+   uv run pytest CH_06_decorators/exercise_01 -v
+
+Reference
+---------
+
+The decorator follows the chapter's `chaining decorators example
+<https://github.com/mastering-python/code_2/blob/a012f6ce3f5bf11f5bf380d1c4e7f743355adb89/CH_06_decorators/T_03_chaining_decorators.rst>`_.

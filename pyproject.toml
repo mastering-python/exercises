@@ -1,0 +1,145 @@
+[project]
+name = "mastering-python-exercises"
+version = "0.1.0"
+description = "Tested solutions for Mastering Python Second Edition exercises"
+readme = "README.rst"
+requires-python = ">=3.10"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "docutils>=0.21",
+    "mypy>=1.18",
+    "pyrefly>=0.59",
+    "pyright>=1.1.411",
+    "pyyaml>=6.0",
+    "pytest>=9.0",
+    "pytest-timeout>=2.4",
+    "ruff>=0.15",
+]
+interactive = [
+    "colorama>=0.4.6",
+    "ipython>=8.37",
+    "ipywidgets>=8.1",
+    "jedi>=0.19",
+]
+scientific = [
+    "datashader>=0.18",
+    "ipykernel>=6.29",
+    "ipywidgets>=8.1",
+    "jupyter-client>=8.6",
+    "jupyterlab>=4.4",
+    "nbclient>=0.10",
+    "nbformat>=5.10",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "pillow>=11",
+    "xarray>=2025.6.1",
+]
+nlp = [
+    "spacy>=3.8.13,<3.8.14",
+    "typer>=0.25,<0.26",
+]
+native = [
+    "build>=1.3",
+    "cffi>=1.17",
+    "setuptools>=80",
+    "wheel>=0.45",
+]
+packaging = [
+    "build>=1.3",
+    "setuptools>=80",
+    "tox>=4.30",
+    "wheel>=0.45",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+force-exclude = true
+include = ["CH_*/**/*.py"]
+extend-exclude = [
+    "**/fixtures/**",
+    "**/multiprocessing_solution_00.py",
+    "**/solution_0[1-9].py",
+    "**/solution_[1-9][0-9].py",
+    "**/threading_solution_00.py",
+]
+
+[tool.ruff.lint]
+select = ["B", "E4", "E7", "E9", "F", "I", "RUF", "UP"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+    "--strict-config",
+    "--strict-markers",
+    "--timeout=30",
+]
+python_files = ["test_solution_00.py", "test_native_build.py"]
+norecursedirs = ["fixtures"]
+markers = [
+    "integration: focused subprocess, notebook, plugin, or build integration",
+    "native: tests requiring a working native compiler",
+    "notebook: tests executing a notebook headlessly",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+show_error_codes = true
+warn_unused_configs = true
+exclude = [
+    "(^|/)fixtures/",
+    "(^|/)multiprocessing_solution_00\\.py$",
+    "(^|/)solution_(0[1-9]|[1-9][0-9])\\.py$",
+    "(^|/)threading_solution_00\\.py$",
+]
+
+[tool.pyright]
+pythonVersion = "3.10"
+typeCheckingMode = "strict"
+include = ["CH_*"]
+exclude = [
+    "**/fixtures/**",
+    "**/multiprocessing_solution_00.py",
+    "**/solution_01.py",
+    "**/solution_02.py",
+    "**/solution_03.py",
+    "**/solution_04.py",
+    "**/solution_05.py",
+    "**/solution_06.py",
+    "**/solution_07.py",
+    "**/solution_08.py",
+    "**/solution_09.py",
+    "**/solution_1?.py",
+    "**/solution_2?.py",
+    "**/solution_3?.py",
+    "**/solution_4?.py",
+    "**/solution_5?.py",
+    "**/solution_6?.py",
+    "**/solution_7?.py",
+    "**/solution_8?.py",
+    "**/solution_9?.py",
+    "**/threading_solution_00.py",
+]
+
+[tool.pyrefly]
+python-version = "3.10"
+project-includes = ["CH_*/**/*.py"]
+project-excludes = [
+    "**/fixtures/**",
+    "**/multiprocessing_solution_00.py",
+    "**/solution_0[1-9].py",
+    "**/solution_[1-9][0-9].py",
+    "**/threading_solution_00.py",
+]
+check-unannotated-defs = true
+infer-return-types = "never"

@@ -1,49 +1,83 @@
-# Modify the memoization function to have a cache per function instead of a 
-# global one.
+"""Memoize each decorated callable with its own inspectable cache."""
 
-import functools
+from collections.abc import Callable, Hashable
+from functools import wraps
+from typing import ParamSpec, Protocol, TypeVar, cast
+
+from CH_06_decorators.exercise_03.solution_00 import (
+    _freeze,  # pyright: ignore[reportPrivateUsage]
+)
+
+__all__: list[str] = ["MemoizedCallable", "memoize"]
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 
-def memoize(function):
-    # Store the cache as attribute of the function so we can
-    # apply the decorator to multiple functions without
-    # sharing the cache.
-    function.cache = dict()
+class MemoizedCallable(Protocol[_P, _R]):
+    """Callable interface exposed by :func:`memoize`."""
 
-    def safe_hash(args):
-        '''
-        In the case of unhashable types use the `repr()` to be hashable.
-        '''
-        try:
-            return hash(args)
-        except TypeError:
-            return repr(args)
+    __name__: str
+    __doc__: str | None
+    __wrapped__: Callable[_P, _R]
 
-    @functools.wraps(function)
-    def _memoize(*args):
-        # If the cache is not available, call the function
-        # Note that all args need to be hashable
-        key = safe_hash(args)
-        if key not in function.cache:
-            function.cache[key] = function(*args)
-        return function.cache[key]
+    @property
+    def cache(self) -> dict[Hashable, _R]:
+        """Return the callable's live cache."""
+        ...
 
-    return _memoize
+    def cache_clear(self) -> None:
+        """Clear this callable's cache."""
+        ...
+
+    def __call__(self, *args: _P.args, **kwargs: _P.kwargs) -> _R:
+        """Call the wrapped callable."""
+        ...
+
+
+class _CacheAttributes(Protocol[_R]):
+    """Writable attributes attached to the wrapper."""
+
+    cache: dict[Hashable, _R]
+    cache_clear: Callable[[], None]
+
+
+def memoize(function: Callable[_P, _R]) -> MemoizedCallable[_P, _R]:
+    """Memoize *function* using a cache private to this decoration."""
+    local_cache: dict[Hashable, _R] = {}
+    missing: object = object()
+
+    @wraps(function)
+    def _memoized(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        key: Hashable = (_freeze(args), _freeze(kwargs))
+        cached: object = local_cache.get(key, missing)
+        if cached is not missing:
+            return cast(_R, cached)
+
+        result: _R = function(*args, **kwargs)
+        local_cache[key] = result
+        return result
+
+    attributes: _CacheAttributes[_R] = cast(
+        _CacheAttributes[_R],
+        _memoized,
+    )
+    attributes.cache = local_cache
+    attributes.cache_clear = local_cache.clear
+    return cast(MemoizedCallable[_P, _R], _memoized)
 
 
 @memoize
-def printer(*args):
+def printer(*args: object) -> None:
+    """Print arguments once per distinct call."""
     print(args)
 
 
-def main():
-    # Should work as expected
-    printer('a', 'b', 'c')
-
-    # Would have issues with the original memoize function because the
-    # parameters are unhashable
-    printer(dict(a=1, b=2, c=3))
+def main() -> None:
+    """Run a small memoization demonstration."""
+    printer("a", "b", "c")
+    printer({"a": 1, "b": 2, "c": 3})
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
